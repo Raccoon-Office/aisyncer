@@ -183,6 +183,12 @@ function executePlatformSync(
  * Main interactive sync flow.
  */
 export async function interactiveSyncFlow(): Promise<void> {
+  // Guard: interactive prompts require a TTY
+  if (!process.stdin.isTTY) {
+    console.error("Error: interactive mode requires a TTY. Use --to <platforms> to specify platforms directly.");
+    process.exit(1);
+  }
+
   // Step 1: Check .my-ai exists
   const myAiDir = path.resolve(".my-ai");
   if (!fs.existsSync(myAiDir)) {

@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import {
   detectAvailableResources,
   getAvailableResourceTypes,
+  interactiveSyncFlow,
   type ResourceDetectionResult,
 } from "../src/cli/commands/interactive-sync.js";
 import type { SkillSpec, RuleSpec } from "../src/core/schema.js";
@@ -196,5 +197,40 @@ describe("getAvailableResourceTypes", () => {
     const types = getAvailableResourceTypes(["windsurf"], detection);
     expect(types).toHaveLength(1);
     expect(types[0].value).toBe("rules");
+  });
+});
+
+describe("interactiveSyncFlow — non-TTY", () => {
+  let tmpDir: string;
+  let originalCwd: string;
+  let originalIsTTY: boolean | undefined;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "interactive-test-nontty-"));
+    originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((_code?: number | string) => {
+      throw new Error("process.exit called");
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, configurable: true });
+    exitSpy.mockRestore();
+    process.chdir(originalCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("exits with error message when stdin is not a TTY", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(interactiveSyncFlow()).rejects.toThrow("process.exit called");
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("interactive mode requires a TTY"),
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    errorSpy.mockRestore();
   });
 });
