@@ -50,11 +50,14 @@ aisyncer init --with-rules
 aisyncer validate
 aisyncer validate --with-rules
 
-# 3. Preview — see what sync would do (dry-run, no writes)
+# 3. Interactive sync — guided prompts, no flags needed
+aisyncer sync
+
+# 4. Preview — see what sync would do (dry-run, no writes)
 aisyncer sync --to claude,codex,windsurf
 aisyncer sync --to claude,codex,windsurf --sync-rules
 
-# 4. Apply — actually write to platform directories
+# 5. Apply — actually write to platform directories
 aisyncer sync --to claude,codex,windsurf --sync-rules --write
 ```
 
@@ -128,6 +131,28 @@ Exits with non-zero code on failure — safe to use in CI.
 ### `aisyncer sync`
 
 Sync skills (and optionally rules) from `.my-ai/` to platform directories.
+
+#### Interactive mode (no flags)
+
+Run `aisyncer sync` without `--to` to enter an interactive guided flow:
+
+```bash
+aisyncer sync
+```
+
+The interactive flow will:
+
+1. Check that `.my-ai/` exists
+2. Scan for available skills and rules
+3. Prompt you to select target platforms (claude, codex, windsurf)
+4. Prompt you to select resource types (skills, rules — filtered by platform support)
+5. Optionally ask for a custom Claude or Codex output directory
+6. Preview all changes (ADD / SKIP / OVERWRITE)
+7. Ask for confirmation before writing
+
+This is the easiest way to sync — no flags to remember.
+
+#### Flag mode
 
 ```bash
 # Dry-run (default) — shows what would happen, writes nothing

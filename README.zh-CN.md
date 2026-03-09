@@ -51,11 +51,14 @@ aisyncer init --with-rules
 aisyncer validate
 aisyncer validate --with-rules
 
-# 3) 预览同步（默认 dry-run）
+# 3) 交互式同步 — 引导提示，无需记忆参数
+aisyncer sync
+
+# 4) 预览同步（默认 dry-run）
 aisyncer sync --to claude,codex,windsurf
 aisyncer sync --to claude,codex,windsurf --sync-rules
 
-# 4) 实际写入
+# 5) 实际写入
 aisyncer sync --to claude,codex,windsurf --sync-rules --write
 ```
 
@@ -120,7 +123,29 @@ aisyncer validate --with-rules
 
 ### `aisyncer sync`
 
-从 `.my-ai/` 同步到平台目录：
+从 `.my-ai/` 同步到平台目录。
+
+#### 交互式模式（无需参数）
+
+不带 `--to` 运行 `aisyncer sync`，进入交互式引导流程：
+
+```bash
+aisyncer sync
+```
+
+交互流程会依次：
+
+1. 检查 `.my-ai/` 是否存在
+2. 扫描可用的 skills 和 rules
+3. 让你选择目标平台（claude、codex、windsurf）
+4. 让你选择资源类型（skills、rules — 根据平台支持情况过滤）
+5. 可选：自定义 Claude 或 Codex 输出目录
+6. 预览所有变更（ADD / SKIP / OVERWRITE）
+7. 确认后写入
+
+这是最简单的同步方式 — 不需要记任何参数。
+
+#### 参数模式
 
 ```bash
 # dry-run
