@@ -19,6 +19,7 @@ Read order:
 5. Respect platform-native path rules:
    - Claude: sync skills only (`.claude/skills/...`), do not create `.claude/rules`.
    - Codex: sync skills only (`.agents/skills/...`), do not create a rules directory; use `AGENTS.md` for project instructions.
+   - Cursor: sync skills only (`.cursor/skills/...`); Cursor project rules live in `.cursor/rules/*.mdc` and are not synced yet.
    - Windsurf: sync skills and flat rule files (`.windsurf/rules/<id>.md`).
 6. PR title must follow conventional format:
    - `<type>(<scope>): <Summary>`

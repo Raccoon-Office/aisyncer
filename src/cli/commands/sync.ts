@@ -1,27 +1,29 @@
 import path from "node:path";
 import { createClaudeAdapter } from "../../adapters/claude.js";
 import { createCodexAdapter } from "../../adapters/codex.js";
+import { createCursorAdapter } from "../../adapters/cursor.js";
 import { createWindsurfAdapter } from "../../adapters/windsurf.js";
 import type { PlatformAdapter } from "../../adapters/base.js";
 import { loadCanonicalSkills, planSync, executeSync } from "../../core/sync.js";
 import { loadCanonicalRules, planRuleSync, executeRuleSync } from "../../core/sync.js";
 import { interactiveSyncFlow } from "./interactive-sync.js";
 
-
 interface SyncOptions {
   to?: string;
   write?: boolean;
   claudeDir?: string;
   codexDir?: string;
+  cursorDir?: string;
   syncRules?: boolean;
 }
 
-type PlatformName = "claude" | "codex" | "windsurf";
+type PlatformName = "claude" | "codex" | "cursor" | "windsurf";
 type RuleUnsupportedPlatform = Exclude<PlatformName, "windsurf">;
 
 const PLATFORM_ADAPTERS = {
   claude: (options: SyncOptions) => createClaudeAdapter(options.claudeDir),
   codex: (options: SyncOptions) => createCodexAdapter(options.codexDir),
+  cursor: (options: SyncOptions) => createCursorAdapter(options.cursorDir),
   windsurf: () => createWindsurfAdapter(),
 } satisfies Record<PlatformName, (options: SyncOptions) => PlatformAdapter>;
 
@@ -30,6 +32,7 @@ export const RULE_SYNC_PLATFORMS = new Set<string>(["windsurf"]);
 const RULE_SKIP_NOTES = {
   claude: "Claude uses CLAUDE.md for project instructions.",
   codex: "Codex has no rules sync target. Use AGENTS.md for project instructions.",
+  cursor: "Cursor rules sync is not supported yet. Manage project rules in .cursor/rules/*.mdc.",
 } satisfies Record<RuleUnsupportedPlatform, string>;
 
 export async function syncCommand(options: SyncOptions): Promise<void> {

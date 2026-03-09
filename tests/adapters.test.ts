@@ -5,6 +5,7 @@ import os from "node:os";
 import { createAdapter } from "../src/adapters/base.js";
 import { createClaudeAdapter } from "../src/adapters/claude.js";
 import { createCodexAdapter } from "../src/adapters/codex.js";
+import { createCursorAdapter } from "../src/adapters/cursor.js";
 import { createWindsurfAdapter } from "../src/adapters/windsurf.js";
 import type { SkillSpec } from "../src/core/schema.js";
 import { skillConfig, ruleConfig } from "../src/core/schema.js";
@@ -180,5 +181,36 @@ describe("createWindsurfAdapter", () => {
     const adapter = createWindsurfAdapter(tmpDir);
     const p = adapter.resourcePath("my-rule", ruleConfig);
     expect(p).toBe(path.join(tmpDir, "rules", "my-rule.md"));
+  });
+});
+
+describe("createCursorAdapter", () => {
+  let tmpDir: string;
+  let originalCwd: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cursor-test-"));
+    originalCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("uses custom directory when provided", () => {
+    const adapter = createCursorAdapter(tmpDir);
+    expect(adapter.name).toBe("cursor");
+    adapter.writeResource(SAMPLE_SKILL, skillConfig);
+    expect(fs.existsSync(path.join(tmpDir, "skills", SAMPLE_SKILL.id, "SKILL.md"))).toBe(true);
+  });
+
+  it("defaults to the repository .cursor directory", () => {
+    const adapter = createCursorAdapter();
+
+    adapter.writeResource(SAMPLE_SKILL, skillConfig);
+
+    expect(fs.existsSync(path.join(tmpDir, ".cursor", "skills", SAMPLE_SKILL.id, "SKILL.md"))).toBe(true);
   });
 });

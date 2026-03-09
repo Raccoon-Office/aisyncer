@@ -22,6 +22,7 @@ export { createAdapter } from "./adapters/base.js";
 export type { PlatformAdapter } from "./adapters/base.js";
 export { createClaudeAdapter } from "./adapters/claude.js";
 export { createCodexAdapter } from "./adapters/codex.js";
+export { createCursorAdapter } from "./adapters/cursor.js";
 export { createWindsurfAdapter } from "./adapters/windsurf.js";
 export { fetchFromGitHub, fetchSkillsFromGitHub, parseGitHubSource } from "./github/fetch.js";
 export type { GitHubResourceFile, GitHubSkillFile, FetchResult } from "./github/fetch.js";

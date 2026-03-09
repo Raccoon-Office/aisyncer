@@ -160,6 +160,19 @@ describe("getAvailableResourceTypes", () => {
     expect(types[0].value).toBe("skills");
   });
 
+  it("returns only skills when rules exist but only cursor is selected", () => {
+    const detection: ResourceDetectionResult = {
+      hasSkills: true,
+      hasRules: true,
+      skillsCount: 2,
+      rulesCount: 1,
+    };
+
+    const types = getAvailableResourceTypes(["cursor"], detection);
+    expect(types).toHaveLength(1);
+    expect(types[0].value).toBe("skills");
+  });
+
   it("returns both when rules exist and both platforms selected", () => {
     const detection: ResourceDetectionResult = {
       hasSkills: true,
