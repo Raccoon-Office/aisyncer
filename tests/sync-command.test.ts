@@ -59,6 +59,15 @@ describe("syncCommand", () => {
     expect(fs.existsSync(path.join(codexDir, "skills", SAMPLE_SKILL.id, "SKILL.md"))).toBe(true);
   });
 
+  it("writes skills to the cursor skills directory", async () => {
+    const cursorDir = path.join(tmpDir, ".cursor-output");
+    writeCanonicalSkill(tmpDir, SAMPLE_SKILL);
+
+    await syncCommand({ to: "cursor", write: true, cursorDir });
+
+    expect(fs.existsSync(path.join(cursorDir, "skills", SAMPLE_SKILL.id, "SKILL.md"))).toBe(true);
+  });
+
   it("prints the codex rules skip note when no rules target is selected", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     writeCanonicalRule(tmpDir, SAMPLE_RULE);
@@ -67,5 +76,15 @@ describe("syncCommand", () => {
 
     expect(logSpy).toHaveBeenCalledWith("No supported rules target selected. Rules sync currently targets windsurf (.windsurf/rules/*.md) only.");
     expect(logSpy).toHaveBeenCalledWith("Codex has no rules sync target. Use AGENTS.md for project instructions.");
+  });
+
+  it("prints the cursor rules skip note when no rules target is selected", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    writeCanonicalRule(tmpDir, SAMPLE_RULE);
+
+    await syncCommand({ to: "cursor", syncRules: true });
+
+    expect(logSpy).toHaveBeenCalledWith("No supported rules target selected. Rules sync currently targets windsurf (.windsurf/rules/*.md) only.");
+    expect(logSpy).toHaveBeenCalledWith("Cursor rules sync is not supported yet. Manage project rules in .cursor/rules/*.mdc.");
   });
 });

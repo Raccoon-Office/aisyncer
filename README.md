@@ -5,19 +5,21 @@
 [![npm version](https://img.shields.io/npm/v/aisyncer.svg)](https://www.npmjs.com/package/aisyncer)
 [npm package](https://www.npmjs.com/package/aisyncer)
 
-CLI tool for syncing AI skills, rules, and configs across Claude, Codex, and Windsurf.
+CLI tool for syncing AI skills, rules, and configs across Claude, Codex, Cursor, and Windsurf.
 
-**The problem:** You use Claude Code, Codex, and Windsurf (maybe more tools tomorrow). Each has its own skills directory, its own format quirks, its own way of doing things. You end up copy-pasting markdown files between platform folders, hoping you didn't forget one. It gets old fast.
+**The problem:** You use Claude Code, Codex, Cursor, and Windsurf (maybe more tools tomorrow). Each has its own skills directory, its own format quirks, its own way of doing things. You end up copy-pasting markdown files between platform folders, hoping you didn't forget one. It gets old fast.
 
 **The solution:** Maintain one canonical source (`.my-ai/`), sync everywhere.
 
 ```
 .my-ai/skills/  ──→  .claude/skills/
                     ──→  .agents/skills/
+                    ──→  .cursor/skills/
                     ──→  .windsurf/skills/
 
 .my-ai/rules/   ──→  .windsurf/rules/<id>.md
                     ──→  (Claude uses CLAUDE.md, no .claude/rules directory)
+                    ──→  (Cursor rules use .cursor/rules/*.mdc and are not synced yet)
 ```
 
 - One format, one source of truth
@@ -37,7 +39,7 @@ Or run without installing:
 npx aisyncer <command>
 ```
 
-Requires Node.js 20+.
+Requires Node.js 20.12+.
 
 ## Quick Start
 
@@ -54,14 +56,14 @@ aisyncer validate --with-rules
 aisyncer sync
 
 # 4. Preview — see what sync would do (dry-run, no writes)
-aisyncer sync --to claude,codex,windsurf
-aisyncer sync --to claude,codex,windsurf --sync-rules
+aisyncer sync --to claude,codex,cursor,windsurf
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
 # 5. Apply — actually write to platform directories
-aisyncer sync --to claude,codex,windsurf --sync-rules --write
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
 ```
 
-> `--sync-rules` writes rules to Windsurf only. Claude and Codex targets print a skip note for rules.
+> `--sync-rules` writes rules to Windsurf only. Claude, Codex, and Cursor targets print a skip note for rules.
 
 That's it. Skills and rules, four commands, no config files, no databases.
 
@@ -144,9 +146,9 @@ The interactive flow will:
 
 1. Check that `.my-ai/` exists
 2. Scan for available skills and rules
-3. Prompt you to select target platforms (claude, codex, windsurf)
+3. Prompt you to select target platforms (claude, codex, cursor, windsurf)
 4. Prompt you to select resource types (skills, rules — filtered by platform support)
-5. Optionally ask for a custom Claude or Codex output directory
+5. Optionally ask for a custom Claude, Codex, or Cursor output directory
 6. Preview all changes (ADD / SKIP / OVERWRITE)
 7. Ask for confirmation before writing
 
@@ -158,26 +160,31 @@ This is the easiest way to sync — no flags to remember.
 # Dry-run (default) — shows what would happen, writes nothing
 aisyncer sync --to claude
 aisyncer sync --to codex
+aisyncer sync --to cursor
 aisyncer sync --to windsurf
-aisyncer sync --to claude,codex,windsurf
+aisyncer sync --to claude,codex,cursor,windsurf
 
 # Include rules
-aisyncer sync --to claude,codex,windsurf --sync-rules
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
 # Actually write files
-aisyncer sync --to claude,codex,windsurf --sync-rules --write
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
 
 # Custom output directory for Claude
 aisyncer sync --to claude --claude-dir ./custom-path --write
 
 # Custom output directory for Codex
 aisyncer sync --to codex --codex-dir ./custom-codex --write
+
+# Custom output directory for Cursor
+aisyncer sync --to cursor --cursor-dir ./custom-cursor --write
 ```
 
 Rules sync behavior:
 - Windsurf: writes to `.windsurf/rules/<id>.md`
 - Claude: skipped (Claude uses `CLAUDE.md`, not `.claude/rules/`)
 - Codex: skipped (Codex has no rules directory; use `AGENTS.md` for project instructions)
+- Cursor: skipped (Cursor project rules use `.cursor/rules/*.mdc` and are not synced yet)
 
 Sync logic per resource:
 
@@ -192,6 +199,7 @@ The hash covers `name`, `description`, `allowedTools`, `metadata`, and `content`
 Output directories:
 - Claude: `.claude/skills/<id>/SKILL.md` (rules are managed via `CLAUDE.md`)
 - Codex: `.agents/skills/<id>/SKILL.md` by default; you can also target user/admin locations with `--codex-dir` such as `~/.agents` or `/etc/codex`
+- Cursor: `.cursor/skills/<id>/SKILL.md` by default; you can override the root with `--cursor-dir`
 - Windsurf: `.windsurf/skills/<id>/SKILL.md`, `.windsurf/rules/<id>.md`
 
 ## Skill Format
@@ -314,6 +322,13 @@ your-project/
         SKILL.md
   CLAUDE.md                ← Claude instructions (no `.claude/rules/`)
 
+  .cursor/                 ← Generated by `aisyncer sync` for skills
+    skills/
+      code-review/
+        SKILL.md
+    rules/
+      my-rule.mdc          ← Native Cursor project rules, not generated by `aisyncer`
+
   .windsurf/               ← Generated by `aisyncer sync` (do not edit)
     skills/
       code-review/
@@ -323,6 +338,8 @@ your-project/
 ```
 
 Codex scans `.agents/skills` from the current working directory up to the repository root. By default, `aisyncer` writes Codex skills to the local repository `.agents/skills/<id>/SKILL.md`. If you want user- or admin-scoped skills instead, pass `--codex-dir ~/.agents` or `--codex-dir /etc/codex`.
+
+Cursor project skills live in `.cursor/skills/<id>/SKILL.md`. Cursor project rules use `.cursor/rules/*.mdc`, which `aisyncer` does not generate yet.
 
 ## Design Principles
 

@@ -1,7 +1,7 @@
 {
   "name": "aisyncer",
-  "version": "0.3.0",
-  "description": "CLI tool for syncing AI skills, rules, and configs across Claude, Codex, and Windsurf",
+  "version": "0.3.1",
+  "description": "CLI tool for syncing AI skills, rules, and configs across Claude, Codex, Cursor, and Windsurf",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/goWrongWay/aisyncer.git"
@@ -35,6 +35,7 @@
     "rules",
     "claude",
     "codex",
+    "cursor",
     "windsurf",
     "cli"
   ],

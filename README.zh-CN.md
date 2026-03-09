@@ -5,11 +5,11 @@
 [![npm version](https://img.shields.io/npm/v/aisyncer.svg)](https://www.npmjs.com/package/aisyncer)
 [npm package](https://www.npmjs.com/package/aisyncer)
 
-用于在 Claude、Codex 和 Windsurf 之间同步 AI skills 与规则（rules）的 CLI 工具。
+用于在 Claude、Codex、Cursor 和 Windsurf 之间同步 AI skills 与规则（rules）的 CLI 工具。
 
 ## 这个工具解决什么问题
 
-你可能同时在用 Claude Code、Codex 和 Windsurf。它们各自有自己的目录结构与约定，手工复制很容易漏文件或版本不一致。
+你可能同时在用 Claude Code、Codex、Cursor 和 Windsurf。它们各自有自己的目录结构与约定，手工复制很容易漏文件或版本不一致。
 
 `aisyncer` 的做法是：
 
@@ -20,10 +20,12 @@
 ```text
 .my-ai/skills/  ──→  .claude/skills/
                  ──→  .agents/skills/
+                 ──→  .cursor/skills/
                  ──→  .windsurf/skills/
 
 .my-ai/rules/   ──→  .windsurf/rules/<id>.md
                  ──→  (Claude 使用 CLAUDE.md，不写 .claude/rules)
+                 ──→  (Cursor 使用 .cursor/rules/*.mdc，当前不参与同步)
 ```
 
 ## 安装
@@ -38,7 +40,7 @@ npm install -g aisyncer
 npx aisyncer <command>
 ```
 
-需要 Node.js 20+。
+需要 Node.js 20.12+。
 
 ## 快速开始
 
@@ -55,14 +57,14 @@ aisyncer validate --with-rules
 aisyncer sync
 
 # 4) 预览同步（默认 dry-run）
-aisyncer sync --to claude,codex,windsurf
-aisyncer sync --to claude,codex,windsurf --sync-rules
+aisyncer sync --to claude,codex,cursor,windsurf
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
 # 5) 实际写入
-aisyncer sync --to claude,codex,windsurf --sync-rules --write
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
 ```
 
-> `--sync-rules` 只会同步到 Windsurf。Claude 和 Codex 目标会显示 skip 提示。
+> `--sync-rules` 只会同步到 Windsurf。Claude、Codex 和 Cursor 目标会显示 skip 提示。
 
 ## 命令说明
 
@@ -137,9 +139,9 @@ aisyncer sync
 
 1. 检查 `.my-ai/` 是否存在
 2. 扫描可用的 skills 和 rules
-3. 让你选择目标平台（claude、codex、windsurf）
+3. 让你选择目标平台（claude、codex、cursor、windsurf）
 4. 让你选择资源类型（skills、rules — 根据平台支持情况过滤）
-5. 可选：自定义 Claude 或 Codex 输出目录
+5. 可选：自定义 Claude、Codex 或 Cursor 输出目录
 6. 预览所有变更（ADD / SKIP / OVERWRITE）
 7. 确认后写入
 
@@ -151,20 +153,24 @@ aisyncer sync
 # dry-run
 aisyncer sync --to claude
 aisyncer sync --to codex
+aisyncer sync --to cursor
 aisyncer sync --to windsurf
-aisyncer sync --to claude,codex,windsurf
+aisyncer sync --to claude,codex,cursor,windsurf
 
 # 带 rules（仅 Windsurf）
-aisyncer sync --to claude,codex,windsurf --sync-rules
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
 # 实际写入
-aisyncer sync --to claude,codex,windsurf --sync-rules --write
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
 
 # 自定义 Claude 输出目录
 aisyncer sync --to claude --claude-dir ./custom-path --write
 
 # 自定义 Codex 输出目录
 aisyncer sync --to codex --codex-dir ./custom-codex --write
+
+# 自定义 Cursor 输出目录
+aisyncer sync --to cursor --cursor-dir ./custom-cursor --write
 ```
 
 rules 同步行为：
@@ -172,11 +178,13 @@ rules 同步行为：
 - Windsurf：写入 `.windsurf/rules/<id>.md`
 - Claude：跳过（Claude 使用 `CLAUDE.md`）
 - Codex：跳过（Codex 没有 rules 目录，项目指令请使用 `AGENTS.md`）
+- Cursor：跳过（Cursor 项目规则使用 `.cursor/rules/*.mdc`，当前还不支持同步）
 
 输出目录：
 
 - Claude：`.claude/skills/<id>/SKILL.md`
 - Codex：默认写入 `.agents/skills/<id>/SKILL.md`；如需用户级或管理员级位置，可用 `--codex-dir ~/.agents` 或 `--codex-dir /etc/codex`
+- Cursor：默认写入 `.cursor/skills/<id>/SKILL.md`；可通过 `--cursor-dir` 覆盖根目录
 - Windsurf：`.windsurf/skills/<id>/SKILL.md` 与 `.windsurf/rules/<id>.md`
 
 ## Skill / Rule 文件格式
@@ -206,6 +214,13 @@ your-project/
         SKILL.md
   CLAUDE.md              # Claude 指令入口（不使用 .claude/rules）
 
+  .cursor/               # aisyncer 生成 / 使用
+    skills/
+      code-review/
+        SKILL.md
+    rules/
+      my-rule.mdc        # Cursor 原生项目规则，当前不会由 aisyncer 生成
+
   .windsurf/             # aisyncer 生成
     skills/
       code-review/
@@ -215,6 +230,8 @@ your-project/
 ```
 
 Codex 会从当前工作目录一路向上扫描到仓库根目录的 `.agents/skills`。`aisyncer` 默认写入当前仓库的 `.agents/skills/<id>/SKILL.md`；如果你想写到用户级或管理员级位置，可以传 `--codex-dir ~/.agents` 或 `--codex-dir /etc/codex`。
+
+Cursor 的项目级 skills 位于 `.cursor/skills/<id>/SKILL.md`。项目级 rules 位于 `.cursor/rules/*.mdc`，当前 `aisyncer` 还不会生成这些文件。
 
 ## 设计原则
 
@@ -242,7 +259,7 @@ Codex 会从当前工作目录一路向上扫描到仓库根目录的 `.agents/s
 aisyncer init --from github:my-org/ai-config
 ```
 
-工具会通过 GitHub API 拉取内容到 `.my-ai/`，再由 `sync` 分发到 Claude、Codex、Windsurf，对 rules 仅分发到 Windsurf。
+工具会通过 GitHub API 拉取内容到 `.my-ai/`，再由 `sync` 分发到 Claude、Codex、Cursor、Windsurf，对 rules 仅分发到 Windsurf。
 
 可直接参考的示例仓库：
 

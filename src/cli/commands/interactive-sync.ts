@@ -3,6 +3,7 @@ import path from "node:path";
 import { checkbox, confirm, input } from "@inquirer/prompts";
 import { createClaudeAdapter } from "../../adapters/claude.js";
 import { createCodexAdapter } from "../../adapters/codex.js";
+import { createCursorAdapter } from "../../adapters/cursor.js";
 import { createWindsurfAdapter } from "../../adapters/windsurf.js";
 import type { PlatformAdapter } from "../../adapters/base.js";
 import type { SkillSpec, RuleSpec } from "../../core/schema.js";
@@ -103,12 +104,19 @@ function actionLabel(action: string): string {
 /**
  * Creates a platform adapter by name.
  */
-function resolveAdapter(platform: string, claudeDir?: string, codexDir?: string): PlatformAdapter {
+function resolveAdapter(
+  platform: string,
+  claudeDir?: string,
+  codexDir?: string,
+  cursorDir?: string,
+): PlatformAdapter {
   switch (platform) {
     case "claude":
       return createClaudeAdapter(claudeDir);
     case "codex":
       return createCodexAdapter(codexDir);
+    case "cursor":
+      return createCursorAdapter(cursorDir);
     case "windsurf":
       return createWindsurfAdapter();
     default:
@@ -236,7 +244,7 @@ export async function interactiveSyncFlow(): Promise<void> {
   const syncSkills = resourceTypes.includes("skills");
   const syncRules = resourceTypes.includes("rules");
 
-  // Step 5: If claude selected, ask for custom directory
+  // Step 5: If selected, ask for custom output directories
   let claudeDir: string | undefined;
   if (platforms.includes("claude")) {
     const useCustomDir = await confirm({
@@ -279,6 +287,27 @@ export async function interactiveSyncFlow(): Promise<void> {
     }
   }
 
+  let cursorDir: string | undefined;
+  if (platforms.includes("cursor")) {
+    const useCustomDir = await confirm({
+      message: "Use custom Cursor output directory?",
+      default: false,
+    });
+
+    if (useCustomDir) {
+      cursorDir = await input({
+        message: "Enter Cursor output directory path:",
+        default: ".cursor",
+        validate: (value: string) => {
+          const trimmed = value.trim();
+          if (!trimmed) return "Directory path cannot be empty.";
+          return true;
+        },
+      });
+      cursorDir = cursorDir.trim();
+    }
+  }
+
   // Load resources once
   const skills = syncSkills
     ? loadCanonicalSkills(path.resolve(".my-ai", "skills"))
@@ -288,7 +317,7 @@ export async function interactiveSyncFlow(): Promise<void> {
     : [];
 
   // Build adapters once
-  const adapters = platforms.map((p) => resolveAdapter(p, claudeDir, codexDir));
+  const adapters = platforms.map((p) => resolveAdapter(p, claudeDir, codexDir, cursorDir));
 
   // Step 6: Preview changes
   console.log("\n=== Preview Changes ===");
