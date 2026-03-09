@@ -5,10 +5,11 @@ import { createWindsurfAdapter } from "../../adapters/windsurf.js";
 import type { PlatformAdapter } from "../../adapters/base.js";
 import { loadCanonicalSkills, planSync, executeSync } from "../../core/sync.js";
 import { loadCanonicalRules, planRuleSync, executeRuleSync } from "../../core/sync.js";
+import { interactiveSyncFlow } from "./interactive-sync.js";
 
 
 interface SyncOptions {
-  to: string;
+  to?: string;
   write?: boolean;
   claudeDir?: string;
   codexDir?: string;
@@ -24,8 +25,8 @@ const PLATFORM_ADAPTERS = {
   windsurf: () => createWindsurfAdapter(),
 } satisfies Record<PlatformName, (options: SyncOptions) => PlatformAdapter>;
 
-const SUPPORTED_PLATFORMS = Object.keys(PLATFORM_ADAPTERS) as PlatformName[];
-const RULE_SYNC_PLATFORMS = new Set<PlatformName>(["windsurf"]);
+export const SUPPORTED_PLATFORMS = Object.keys(PLATFORM_ADAPTERS) as PlatformName[];
+export const RULE_SYNC_PLATFORMS = new Set<string>(["windsurf"]);
 const RULE_SKIP_NOTES = {
   claude: "Claude uses CLAUDE.md for project instructions.",
   codex: "Codex has no rules sync target. Use AGENTS.md for project instructions.",
@@ -33,8 +34,9 @@ const RULE_SKIP_NOTES = {
 
 export async function syncCommand(options: SyncOptions): Promise<void> {
   if (!options.to) {
-    console.error("Error: --to is required. Use --to claude, --to codex, --to windsurf, or a comma-separated combination");
-    process.exit(1);
+    // Enter interactive mode if --to is not provided
+    await interactiveSyncFlow();
+    return;
   }
 
   const platforms = parsePlatforms(options.to);
