@@ -18,6 +18,10 @@ export function createWindsurfAdapter(windsurfDir?: string): PlatformAdapter {
   return {
     name: base.name,
 
+    resourceDirPath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string {
+      return base.resourceDirPath(id, config);
+    },
+
     resourcePath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string {
       if (config.name === "rule") {
         return windsurfRulePath(id);

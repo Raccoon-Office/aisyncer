@@ -22,10 +22,20 @@ const SAMPLE_RULE: RuleSpec = {
   content: "# Codex Rule\n\nContent here.",
 };
 
-function writeCanonicalSkill(baseDir: string, skill: SkillSpec): void {
+function writeCanonicalSkill(
+  baseDir: string,
+  skill: SkillSpec,
+  extraFiles: Record<string, string> = {},
+): void {
   const dir = path.join(baseDir, ".my-ai", "skills", skill.id);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "SKILL.md"), emitSkill(skill), "utf-8");
+
+  for (const [relativePath, content] of Object.entries(extraFiles)) {
+    const filePath = path.join(dir, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content, "utf-8");
+  }
 }
 
 function writeCanonicalRule(baseDir: string, rule: RuleSpec): void {
@@ -66,6 +76,17 @@ describe("syncCommand", () => {
     await syncCommand({ to: "cursor", write: true, cursorDir });
 
     expect(fs.existsSync(path.join(cursorDir, "skills", SAMPLE_SKILL.id, "SKILL.md"))).toBe(true);
+  });
+
+  it("mirrors companion skill files into the target platform directory", async () => {
+    const codexDir = path.join(tmpDir, ".codex-output");
+    writeCanonicalSkill(tmpDir, SAMPLE_SKILL, {
+      "references/checklist.md": "Checklist",
+    });
+
+    await syncCommand({ to: "codex", write: true, codexDir });
+
+    expect(fs.existsSync(path.join(codexDir, "skills", SAMPLE_SKILL.id, "references", "checklist.md"))).toBe(true);
   });
 
   it("prints the codex rules skip note when no rules target is selected", async () => {

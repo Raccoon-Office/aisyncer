@@ -2,7 +2,7 @@
  * Fetch skills and rules from a GitHub repository using the REST API.
  *
  * Expected remote structure:
- *   skills/<id>/SKILL.md   (at least skills/ or rules/ must exist)
+ *   skills/<id>/SKILL.md   (additional files under skills/<id>/ are preserved)
  *   rules/<id>/RULE.md     (optional)
  *
  * Uses the GitHub Contents API. No git clone needed.
@@ -14,11 +14,21 @@ export interface GitHubResourceFile {
   content: string;
 }
 
-/** @deprecated Use GitHubResourceFile instead */
-export type GitHubSkillFile = GitHubResourceFile;
+export interface GitHubSkillEntry {
+  path: string;
+  content: string;
+}
+
+export interface GitHubSkillDirectory {
+  id: string;
+  files: GitHubSkillEntry[];
+}
+
+/** @deprecated Use GitHubSkillDirectory instead */
+export type GitHubSkillFile = GitHubSkillDirectory;
 
 export interface FetchResult {
-  skills: GitHubResourceFile[];
+  skills: GitHubSkillDirectory[];
   rules: GitHubResourceFile[];
   errors: string[];
 }
@@ -106,20 +116,16 @@ export function parseGitHubSource(source: string): {
 
 async function fetchBlobs(
   blobs: GitHubTreeItem[],
-  pattern: RegExp,
   token?: string,
-): Promise<{ files: GitHubResourceFile[]; errors: string[] }> {
-  const files: GitHubResourceFile[] = [];
+): Promise<{ files: GitHubSkillEntry[]; errors: string[] }> {
+  const files: GitHubSkillEntry[] = [];
   const errors: string[] = [];
 
   for (const blob of blobs) {
-    const match = blob.path.match(pattern)!;
-    const id = match[1];
-
     try {
       const blobData = await githubGet<GitHubBlobResponse>(blob.url, token);
       const content = Buffer.from(blobData.content, blobData.encoding as BufferEncoding).toString("utf-8");
-      files.push({ id, content });
+      files.push({ path: blob.path, content });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push(`Failed to fetch ${blob.path}: ${msg}`);
@@ -134,7 +140,7 @@ async function fetchBlobs(
  *
  * Strategy:
  * 1. GET the default branch's tree recursively.
- * 2. Filter for paths matching skills/<id>/SKILL.md and rules/<id>/RULE.md.
+ * 2. Filter for paths matching skills/<id>/** and rules/<id>/RULE.md.
  * 3. GET each blob to retrieve file content.
  */
 export async function fetchFromGitHub(
@@ -182,8 +188,8 @@ export async function fetchFromGitHub(
     errors.push("Warning: Repository tree was truncated. Some resources may be missing.");
   }
 
-  // Find skills/<id>/SKILL.md and rules/<id>/RULE.md blobs
-  const skillPattern = /^skills\/([a-z0-9-]+)\/SKILL\.md$/;
+  // Find skills/<id>/** and rules/<id>/RULE.md blobs
+  const skillPattern = /^skills\/([a-z0-9-]+)\/(.+)$/;
   const rulePattern = /^rules\/([a-z0-9-]+)\/RULE\.md$/;
 
   const skillBlobs = tree.tree.filter(
@@ -195,18 +201,47 @@ export async function fetchFromGitHub(
 
   if (skillBlobs.length === 0 && ruleBlobs.length === 0) {
     errors.push(
-      `No skills or rules found in ${owner}/${repo}. Expected structure: skills/<id>/SKILL.md and/or rules/<id>/RULE.md`,
+      `No skills or rules found in ${owner}/${repo}. Expected structure: skills/<id>/SKILL.md (plus optional companion files) and/or rules/<id>/RULE.md`,
     );
     return { skills: [], rules: [], errors };
   }
 
   // Fetch blobs
-  const skillResult = await fetchBlobs(skillBlobs, skillPattern, token);
-  const ruleResult = await fetchBlobs(ruleBlobs, rulePattern, token);
+  const skillResult = await fetchBlobs(skillBlobs, token);
+  const ruleResult = await fetchBlobs(ruleBlobs, token);
 
   errors.push(...skillResult.errors, ...ruleResult.errors);
 
-  return { skills: skillResult.files, rules: ruleResult.files, errors };
+  const skillsById = new Map<string, GitHubSkillEntry[]>();
+  for (const file of skillResult.files) {
+    const match = file.path.match(skillPattern);
+    if (!match) continue;
+
+    const [, id, relativePath] = match;
+    const files = skillsById.get(id) ?? [];
+    files.push({ path: relativePath, content: file.content });
+    skillsById.set(id, files);
+  }
+
+  const skills = Array.from(skillsById.entries())
+    .map(([id, files]) => ({
+      id,
+      files: files.sort((left, right) => left.path.localeCompare(right.path)),
+    }))
+    .filter((skill) => {
+      const hasEntryPoint = skill.files.some((file) => file.path === "SKILL.md");
+      if (hasEntryPoint) return true;
+      errors.push(`Skipping skill ${skill.id}: SKILL.md not found`);
+      return false;
+    });
+
+  const rules = ruleResult.files.flatMap((file) => {
+    const match = file.path.match(rulePattern);
+    if (!match) return [];
+    return [{ id: match[1], content: file.content }];
+  });
+
+  return { skills, rules, errors };
 }
 
 /** @deprecated Use fetchFromGitHub instead */

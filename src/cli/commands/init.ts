@@ -121,9 +121,15 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
 
   // Write skills
   for (const remote of result.skills) {
+    const entryFile = remote.files.find((file) => file.path === "SKILL.md");
+    if (!entryFile) {
+      validationErrors.push(`skill ${remote.id}: SKILL.md not found`);
+      continue;
+    }
+
     let skill: SkillSpec;
     try {
-      skill = parseSkill(remote.content);
+      skill = parseSkill(entryFile.content);
     } catch {
       validationErrors.push(`skill ${remote.id}: Failed to parse frontmatter`);
       continue;
@@ -138,8 +144,29 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
     }
 
     const dir = path.join(skillsDir, validation.data.id);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "SKILL.md"), remote.content, "utf-8");
+    const targetFiles: Array<{ path: string; content: string }> = [];
+
+    let hasInvalidPath = false;
+    for (const file of remote.files) {
+      const targetPath = resolveResourcePath(dir, file.path);
+      if (!targetPath) {
+        validationErrors.push(`skill ${remote.id}: Invalid file path "${file.path}"`);
+        hasInvalidPath = true;
+        break;
+      }
+
+      targetFiles.push({ path: targetPath, content: file.content });
+    }
+
+    if (hasInvalidPath) {
+      continue;
+    }
+
+    for (const file of targetFiles) {
+      fs.mkdirSync(path.dirname(file.path), { recursive: true });
+      fs.writeFileSync(file.path, file.content, "utf-8");
+    }
+
     skillsWritten++;
     console.log(`  + skill: ${validation.data.id}`);
   }
@@ -184,4 +211,23 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
     fs.rmSync(path.resolve(".my-ai"), { recursive: true, force: true });
     process.exit(1);
   }
+}
+
+function resolveResourcePath(baseDir: string, relativePath: string): string | null {
+  if (relativePath.length === 0 || path.isAbsolute(relativePath)) {
+    return null;
+  }
+
+  const segments = relativePath.split(/[\\/]+/);
+  if (segments.includes("..")) {
+    return null;
+  }
+
+  const resolvedBase = path.resolve(baseDir);
+  const resolvedPath = path.resolve(resolvedBase, relativePath);
+  if (resolvedPath.startsWith(`${resolvedBase}${path.sep}`)) {
+    return resolvedPath;
+  }
+
+  return null;
 }

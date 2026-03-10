@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { parseGitHubSource } from "../src/github/fetch.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fetchFromGitHub, parseGitHubSource } from "../src/github/fetch.js";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("parseGitHubSource", () => {
   it("parses github:owner/repo", () => {
@@ -82,3 +86,86 @@ describe("parseGitHubSource", () => {
     expect(() => parseGitHubSource("gitlab:my-org/my-repo")).toThrow("Invalid GitHub source");
   });
 });
+
+describe("fetchFromGitHub", () => {
+  it("groups all files under each skill directory", async () => {
+    const responses = new Map<string, Response>([
+      [
+        "https://api.github.com/repos/my-org/my-repo/branches/main",
+        jsonResponse({ commit: { sha: "main-sha" } }),
+      ],
+      [
+        "https://api.github.com/repos/my-org/my-repo/git/trees/main-sha?recursive=1",
+        jsonResponse({
+          truncated: false,
+          tree: [
+            { path: "skills/code-review/SKILL.md", type: "blob", url: "https://api.github.com/blob/skill" },
+            { path: "skills/code-review/references/checklist.md", type: "blob", url: "https://api.github.com/blob/reference" },
+            { path: "skills/code-review/scripts/review.sh", type: "blob", url: "https://api.github.com/blob/script" },
+            { path: "rules/default/RULE.md", type: "blob", url: "https://api.github.com/blob/rule" },
+          ],
+        }),
+      ],
+      [
+        "https://api.github.com/blob/skill",
+        jsonResponse(encodedBlob("---\nschemaVersion: 1\nid: code-review\nname: Code Review\ndescription: Review code\n---\n\n# Code Review\n")),
+      ],
+      [
+        "https://api.github.com/blob/reference",
+        jsonResponse(encodedBlob("Checklist content")),
+      ],
+      [
+        "https://api.github.com/blob/script",
+        jsonResponse(encodedBlob("#!/bin/sh\necho review\n")),
+      ],
+      [
+        "https://api.github.com/blob/rule",
+        jsonResponse(encodedBlob("---\nschemaVersion: 1\nid: default\nname: Default Rule\ndescription: Rule\n---\n\n# Rule\n")),
+      ],
+    ]);
+
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL) => {
+      const response = responses.get(String(url));
+      if (!response) {
+        throw new Error(`Unexpected URL: ${String(url)}`);
+      }
+      return response;
+    }));
+
+    const result = await fetchFromGitHub("github:my-org/my-repo");
+
+    expect(result.errors).toEqual([]);
+    expect(result.skills).toEqual([
+      {
+        id: "code-review",
+        files: [
+          { path: "references/checklist.md", content: "Checklist content" },
+          { path: "scripts/review.sh", content: "#!/bin/sh\necho review\n" },
+          { path: "SKILL.md", content: "---\nschemaVersion: 1\nid: code-review\nname: Code Review\ndescription: Review code\n---\n\n# Code Review\n" },
+        ],
+      },
+    ]);
+    expect(result.rules).toEqual([
+      {
+        id: "default",
+        content: "---\nschemaVersion: 1\nid: default\nname: Default Rule\ndescription: Rule\n---\n\n# Rule\n",
+      },
+    ]);
+  });
+});
+
+function encodedBlob(content: string): { content: string; encoding: string } {
+  return {
+    content: Buffer.from(content, "utf-8").toString("base64"),
+    encoding: "base64",
+  };
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+}

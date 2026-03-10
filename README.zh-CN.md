@@ -92,6 +92,8 @@ aisyncer init --from https://github.com/owner/repo.git
 skills/                 # 必需
   my-skill/
     SKILL.md
+    references/
+      checklist.md
 rules/                  # 可选，自动识别
   my-rule/
     RULE.md
@@ -103,6 +105,8 @@ rules/                  # 可选，自动识别
 export GITHUB_TOKEN=ghp_xxx
 aisyncer init --from github:owner/private-repo
 ```
+
+> 不会 `git clone`。工具会通过 GitHub REST API 拉取完整的 `skills/<id>/` 目录（其中 `SKILL.md` 是入口文件）以及 `rules/<id>/RULE.md`。
 
 ### `aisyncer validate`
 
@@ -180,6 +184,12 @@ rules 同步行为：
 - Codex：跳过（Codex 没有 rules 目录，项目指令请使用 `AGENTS.md`）
 - Cursor：跳过（Cursor 项目规则使用 `.cursor/rules/*.mdc`，当前还不支持同步）
 
+skill 同步行为：
+
+- `SKILL.md` 是 skill 入口文件
+- `aisyncer` 会镜像整个 `skills/<id>/` 目录，而不是只写 `SKILL.md`
+- 如果目标目录里有陈旧的派生文件，覆盖时会一并清理
+
 输出目录：
 
 - Claude：`.claude/skills/<id>/SKILL.md`
@@ -189,7 +199,9 @@ rules 同步行为：
 
 ## Skill / Rule 文件格式
 
-Skill 使用 `SKILL.md`，Rule 使用 `RULE.md`，都采用：
+每个 skill 都是一个目录。`SKILL.md` 是必需入口文件；同目录下的 `references/`、`scripts/`、模板等附属文件会一起同步。
+
+`SKILL.md` 和 Rule 的 `RULE.md` 都采用：
 
 - YAML frontmatter
 - Markdown 正文
@@ -204,6 +216,8 @@ your-project/
     skills/
       code-review/
         SKILL.md
+        references/
+          checklist.md
     rules/
       code-style/
         RULE.md
@@ -237,11 +251,11 @@ Cursor 的项目级 skills 位于 `.cursor/skills/<id>/SKILL.md`。项目级 rul
 
 ### 单一事实来源
 
-只编辑 `.my-ai/`。平台目录都是派生结果。
+只编辑 `.my-ai/`。平台目录都是派生结果。对于 skill 来说，派生结果是整个 `skills/<id>/` 目录，而不只是 `SKILL.md`。
 
 ### 单向同步
 
-仅支持 `.my-ai/ → 平台目录`，不支持反向回写或双向合并。
+仅支持 `.my-ai/ → 平台目录`，skill 目录会被完整镜像到各平台，不支持反向回写或双向合并。
 
 ### 默认安全
 
