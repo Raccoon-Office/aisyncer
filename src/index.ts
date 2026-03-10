@@ -4,7 +4,7 @@ export type { SkillSpec } from "./core/schema.js";
 export { parseSkill, emitSkill } from "./core/parser.js";
 export { hashSkill } from "./core/hash.js";
 export { loadCanonicalSkills, planSync, executeSync } from "./core/sync.js";
-export type { SyncAction } from "./core/sync.js";
+export type { SyncAction, CanonicalSkill } from "./core/sync.js";
 export { validateSkillsDir } from "./core/validator.js";
 
 // Rules
@@ -25,4 +25,4 @@ export { createCodexAdapter } from "./adapters/codex.js";
 export { createCursorAdapter } from "./adapters/cursor.js";
 export { createWindsurfAdapter } from "./adapters/windsurf.js";
 export { fetchFromGitHub, fetchSkillsFromGitHub, parseGitHubSource } from "./github/fetch.js";
-export type { GitHubResourceFile, GitHubSkillFile, FetchResult } from "./github/fetch.js";
+export type { GitHubResourceFile, GitHubSkillDirectory, GitHubSkillEntry, GitHubSkillFile, FetchResult } from "./github/fetch.js";

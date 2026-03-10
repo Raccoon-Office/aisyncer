@@ -94,6 +94,8 @@ The remote repository must follow this structure (`rules/` is optional):
 skills/                    ← required
   my-skill/
     SKILL.md
+    references/
+      checklist.md
   another-skill/
     SKILL.md
 rules/                     ← optional, auto-detected
@@ -110,7 +112,7 @@ export GITHUB_TOKEN=ghp_xxx
 aisyncer init --from github:owner/private-repo
 ```
 
-> No git clone. We use the GitHub REST API to fetch `skills/*/SKILL.md` and `rules/*/RULE.md` files.
+> No git clone. We use the GitHub REST API to fetch full `skills/<id>/` directories (with `SKILL.md` as the entry point) and `rules/<id>/RULE.md` files.
 
 ### `aisyncer validate`
 
@@ -190,11 +192,13 @@ Sync logic per resource:
 
 | Condition | Action |
 |-----------|--------|
-| Target does not exist | **ADD** — write the file |
+| Target does not exist | **ADD** — write the canonical file or directory |
 | Target exists, hash matches | **SKIP** — no changes needed |
-| Target exists, hash differs | **OVERWRITE** — replace with canonical version |
+| Target exists, hash differs | **OVERWRITE** — replace with the canonical version |
 
-The hash covers `name`, `description`, `allowedTools`, `metadata`, and `content` — so renaming a skill or changing its tags will trigger an overwrite, not just content edits.
+For skills, `SKILL.md` remains the entry point, but `aisyncer` mirrors the entire `skills/<id>/` directory. Companion files such as `references/`, `scripts/`, or templates are copied to every platform target and stale generated files are removed on overwrite.
+
+The hash covers `name`, `description`, `allowedTools`, `metadata`, and `content` for single-file comparisons, and full skill directory snapshots when syncing canonical skill folders.
 
 Output directories:
 - Claude: `.claude/skills/<id>/SKILL.md` (rules are managed via `CLAUDE.md`)
@@ -204,7 +208,9 @@ Output directories:
 
 ## Skill Format
 
-Skills are `SKILL.md` files — YAML frontmatter + markdown body:
+Each skill lives in its own directory. `SKILL.md` is the required entry point, and any companion files under the same skill directory are synced alongside it.
+
+`SKILL.md` itself uses YAML frontmatter + markdown body:
 
 ```markdown
 ---
@@ -310,6 +316,8 @@ your-project/
     skills/
       code-review/
         SKILL.md
+        references/
+          checklist.md
       commit-style/
         SKILL.md
     rules/
@@ -345,11 +353,11 @@ Cursor project skills live in `.cursor/skills/<id>/SKILL.md`. Cursor project rul
 
 ### Single source of truth
 
-`.my-ai/` is the only directory you should ever edit. Everything else is derived output. This avoids the classic "which copy is the latest?" problem.
+`.my-ai/` is the only directory you should ever edit. Everything else is derived output. For skills, that derived output is the whole `skills/<id>/` directory, not just `SKILL.md`. This avoids the classic "which copy is the latest?" problem.
 
 ### One-way sync only
 
-Sync always flows from `.my-ai/` → platform directories. We intentionally don't support:
+Sync always flows from `.my-ai/` → platform directories. Skill directories are mirrored into each platform target. We intentionally don't support:
 - Reading from `.claude/` back into `.my-ai/`
 - Merging changes from platform directories
 - Two-way sync

@@ -5,6 +5,8 @@ import { parseResource, validateResource, emitResource } from "../core/resource.
 
 export interface PlatformAdapter {
   name: string;
+  /** Resolve the output directory for a given resource id */
+  resourceDirPath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string;
   /** Resolve the output path for a given resource id */
   resourcePath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string;
   /** Read an existing resource, or null if not found / corrupt */
@@ -16,6 +18,10 @@ export interface PlatformAdapter {
 export function createAdapter(name: string, baseDir: string): PlatformAdapter {
   return {
     name,
+
+    resourceDirPath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string {
+      return path.join(baseDir, config.dirName, id);
+    },
 
     resourcePath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string {
       return path.join(baseDir, config.dirName, id, config.fileName);

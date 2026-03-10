@@ -35,7 +35,7 @@ npx vitest run --grep "plans ADD"
 ## Architecture
 
 One-way sync tool:
-- Skills: `.my-ai/skills/<id>/SKILL.md` → `.claude/skills/<id>/SKILL.md`, `.agents/skills/<id>/SKILL.md` (Codex repo scope by default), `.cursor/skills/<id>/SKILL.md`, and `.windsurf/skills/<id>/SKILL.md`
+- Skills: `.my-ai/skills/<id>/` (with `SKILL.md` as the entry point) → mirrored into `.claude/skills/<id>/`, `.agents/skills/<id>/` (Codex repo scope by default), `.cursor/skills/<id>/`, and `.windsurf/skills/<id>/`
 - Rules: `.my-ai/rules/<id>/RULE.md` → `.windsurf/rules/<id>.md` (Claude rules are managed via `CLAUDE.md`)
 
 Supports multiple resource types (skills, rules) via a generic `ResourceConfig<T>` system. Adding a new resource type does NOT require changing `resource.ts`, `PlatformAdapter`, or any generic infrastructure — only a new schema + config + CLI wiring.
@@ -43,12 +43,12 @@ Supports multiple resource types (skills, rules) via a generic `ResourceConfig<T
 ### Data flow (same for all resource types)
 
 ```
-SKILL.md / RULE.md file
+Skill directory / RULE.md file
   → parseResource() [gray-matter: frontmatter + markdown]
   → validateResource() [zod schema via ResourceConfig]
-  → hashResource() [SHA-256 of semantic fields via ResourceConfig.hashFields]
-  → planResourceSync() [compare hash with target → ADD/SKIP/OVERWRITE]
-  → executeResourceSync() [write via PlatformAdapter]
+  → hashResource() / skill directory snapshot [SHA-256]
+  → planResourceSync() / planSync() [compare target → ADD/SKIP/OVERWRITE]
+  → executeResourceSync() / executeSync() [write via PlatformAdapter]
 ```
 
 Convenience wrappers exist per type: `parseSkill()`, `hashRule()`, `planSync()`, etc.

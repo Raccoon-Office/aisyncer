@@ -24,10 +24,28 @@ const SKILL_B: SkillSpec = {
   content: "# Skill B\n\nContent B.",
 };
 
-function writeCanonicalSkill(baseDir: string, skill: SkillSpec): void {
+function writeCanonicalSkill(
+  baseDir: string,
+  skill: SkillSpec,
+  extraFiles: Record<string, string> = {},
+): void {
   const dir = path.join(baseDir, skill.id);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "SKILL.md"), emitSkill(skill), "utf-8");
+
+  for (const [relativePath, content] of Object.entries(extraFiles)) {
+    const filePath = path.join(dir, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content, "utf-8");
+  }
+}
+
+function loadCanonicalSkill(baseDir: string, id: string): SkillSpec {
+  const skill = loadCanonicalSkills(baseDir).find((entry) => entry.id === id);
+  if (!skill) {
+    throw new Error(`Expected canonical skill ${id} to exist`);
+  }
+  return skill;
 }
 
 describe("loadCanonicalSkills", () => {
@@ -86,13 +104,16 @@ describe("loadCanonicalSkills", () => {
 
 describe("planSync", () => {
   let targetDir: string;
+  let canonicalDir: string;
 
   beforeEach(() => {
     targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-sync-"));
+    canonicalDir = fs.mkdtempSync(path.join(os.tmpdir(), "plan-canonical-"));
   });
 
   afterEach(() => {
     fs.rmSync(targetDir, { recursive: true, force: true });
+    fs.rmSync(canonicalDir, { recursive: true, force: true });
   });
 
   it("plans ADD when target does not exist", () => {
@@ -163,6 +184,36 @@ describe("planSync", () => {
     expect(actions[0].action).toBe("overwrite");
   });
 
+  it("plans OVERWRITE when canonical skill has companion files missing from target", () => {
+    writeCanonicalSkill(canonicalDir, SKILL_A, {
+      "references/checklist.md": "Review checklist",
+    });
+    const canonicalSkill = loadCanonicalSkill(canonicalDir, SKILL_A.id);
+
+    const adapter = createAdapter("test", targetDir);
+    adapter.writeResource(SKILL_A, skillConfig);
+
+    const actions = planSync([canonicalSkill], adapter);
+    expect(actions).toHaveLength(1);
+    expect(actions[0].action).toBe("overwrite");
+  });
+
+  it("plans OVERWRITE when target has stale companion files", () => {
+    writeCanonicalSkill(canonicalDir, SKILL_A);
+    const canonicalSkill = loadCanonicalSkill(canonicalDir, SKILL_A.id);
+
+    const adapter = createAdapter("test", targetDir);
+    adapter.writeResource(SKILL_A, skillConfig);
+
+    const stalePath = path.join(targetDir, "skills", SKILL_A.id, "references", "stale.md");
+    fs.mkdirSync(path.dirname(stalePath), { recursive: true });
+    fs.writeFileSync(stalePath, "stale content", "utf-8");
+
+    const actions = planSync([canonicalSkill], adapter);
+    expect(actions).toHaveLength(1);
+    expect(actions[0].action).toBe("overwrite");
+  });
+
   it("handles multiple skills with mixed actions", () => {
     const adapter = createAdapter("test", targetDir);
     adapter.writeResource(SKILL_A, skillConfig);
@@ -196,13 +247,16 @@ describe("planSync", () => {
 
 describe("executeSync", () => {
   let targetDir: string;
+  let canonicalDir: string;
 
   beforeEach(() => {
     targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-sync-"));
+    canonicalDir = fs.mkdtempSync(path.join(os.tmpdir(), "exec-canonical-"));
   });
 
   afterEach(() => {
     fs.rmSync(targetDir, { recursive: true, force: true });
+    fs.rmSync(canonicalDir, { recursive: true, force: true });
   });
 
   it("writes skills for add actions", () => {
@@ -243,5 +297,30 @@ describe("executeSync", () => {
 
     const read = adapter.readResource("skill-a", skillConfig);
     expect(read?.content).toBe("# Updated content\n\nNew text.");
+  });
+
+  it("mirrors companion files and removes stale files for canonical skills", () => {
+    writeCanonicalSkill(canonicalDir, SKILL_A, {
+      "references/checklist.md": "Review checklist",
+      "scripts/review.sh": "#!/bin/sh\necho review\n",
+    });
+    const canonicalSkill = loadCanonicalSkill(canonicalDir, SKILL_A.id);
+
+    const adapter = createAdapter("test", targetDir);
+    adapter.writeResource(SKILL_A, skillConfig);
+
+    const stalePath = path.join(targetDir, "skills", SKILL_A.id, "references", "old.md");
+    fs.mkdirSync(path.dirname(stalePath), { recursive: true });
+    fs.writeFileSync(stalePath, "old", "utf-8");
+
+    const actions = planSync([canonicalSkill], adapter);
+    executeSync([canonicalSkill], actions, adapter);
+
+    const copiedReference = path.join(targetDir, "skills", SKILL_A.id, "references", "checklist.md");
+    const copiedScript = path.join(targetDir, "skills", SKILL_A.id, "scripts", "review.sh");
+    expect(fs.existsSync(copiedReference)).toBe(true);
+    expect(fs.existsSync(copiedScript)).toBe(true);
+    expect(fs.readFileSync(copiedReference, "utf-8")).toBe("Review checklist");
+    expect(fs.existsSync(stalePath)).toBe(false);
   });
 });
