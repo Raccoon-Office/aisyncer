@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { emitSkill, emitRule } from "../../core/parser.js";
+import { emitProjectInstructions } from "../../core/project-instructions.js";
 import type { SkillSpec, RuleSpec } from "../../core/schema.js";
 import { fetchFromGitHub } from "../../github/fetch.js";
 import { materializeFetchedResources } from "../../github/materialize.js";
@@ -49,7 +50,19 @@ This is an example rule that demonstrates how to write rules for AI assistants.
   },
 };
 
-export async function initCommand(options: { from?: string; withRules?: boolean }): Promise<void> {
+const EXAMPLE_PROJECT_INSTRUCTIONS = {
+  content: `# Project Instructions
+
+These instructions apply across assistants for this repository.
+
+## Defaults
+
+- Prefer minimal, focused changes
+- Update tests and docs when behavior changes
+- Keep generated platform files derived from .my-ai`,
+};
+
+export async function initCommand(options: { from?: string; withRules?: boolean; withInstructions?: boolean }): Promise<void> {
   const baseDir = path.resolve(".my-ai");
   const skillsDir = path.join(baseDir, "skills");
 
@@ -61,11 +74,11 @@ export async function initCommand(options: { from?: string; withRules?: boolean 
   if (options.from) {
     await initFromGitHub(options.from, skillsDir);
   } else {
-    initLocal(skillsDir, options.withRules ?? false);
+    initLocal(skillsDir, options.withRules ?? false, options.withInstructions ?? false);
   }
 }
 
-function initLocal(skillsDir: string, withRules: boolean): void {
+function initLocal(skillsDir: string, withRules: boolean, withInstructions: boolean): void {
   const exampleDir = path.join(skillsDir, EXAMPLE_SKILL.id);
   const skillFile = path.join(exampleDir, "SKILL.md");
 
@@ -85,6 +98,19 @@ function initLocal(skillsDir: string, withRules: boolean): void {
 
     console.log("\nInitialized rules with example rule:");
     console.log(`  ${ruleFile}`);
+  }
+
+  if (withInstructions) {
+    const instructionsFile = path.join(path.dirname(skillsDir), "instructions", "PROJECT.md");
+    fs.mkdirSync(path.dirname(instructionsFile), { recursive: true });
+    fs.writeFileSync(
+      instructionsFile,
+      emitProjectInstructions(EXAMPLE_PROJECT_INSTRUCTIONS),
+      "utf-8",
+    );
+
+    console.log("\nInitialized project instructions:");
+    console.log(`  ${instructionsFile}`);
   }
 }
 
@@ -118,6 +144,7 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
   const {
     skillsWritten,
     rulesWritten,
+    projectInstructionsWritten,
     writtenSkillIds,
     writtenRuleIds,
     validationErrors,
@@ -131,6 +158,10 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
     console.log(`  + rule: ${id}`);
   }
 
+  if (projectInstructionsWritten) {
+    console.log("  + project instructions");
+  }
+
   if (validationErrors.length > 0) {
     console.warn(`\nSkipped ${validationErrors.length} invalid resource(s):`);
     for (const err of validationErrors) {
@@ -138,8 +169,13 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
     }
   }
 
-  const total = skillsWritten + rulesWritten;
-  console.log(`\nInitialized .my-ai with ${skillsWritten} skill(s) and ${rulesWritten} rule(s) from ${source}.`);
+  const total = skillsWritten + rulesWritten + (projectInstructionsWritten ? 1 : 0);
+  const summary = [`${skillsWritten} skill(s)`, `${rulesWritten} rule(s)`];
+  if (projectInstructionsWritten) {
+    summary.push("project instructions");
+  }
+
+  console.log(`\nInitialized .my-ai with ${summary.join(", ")} from ${source}.`);
 
   if (total === 0) {
     console.error("No valid resources were imported. Removing .my-ai directory.");

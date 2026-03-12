@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/aisyncer.svg)](https://www.npmjs.com/package/aisyncer)
 [npm package](https://www.npmjs.com/package/aisyncer)
 
-CLI tool for syncing AI skills, rules, and configs across Claude, Codex, Cursor, and Windsurf.
+CLI tool for syncing AI skills, rules, and project instructions across Claude, Codex, Cursor, and Windsurf.
 
 **The problem:** You use Claude Code, Codex, Cursor, and Windsurf (maybe more tools tomorrow). Each has its own skills directory, its own format quirks, its own way of doing things. You end up copy-pasting markdown files between platform folders, hoping you didn't forget one. It gets old fast.
 
@@ -20,6 +20,10 @@ CLI tool for syncing AI skills, rules, and configs across Claude, Codex, Cursor,
 .my-ai/rules/   ──→  .windsurf/rules/<id>.md
                     ──→  (Claude uses CLAUDE.md, no .claude/rules directory)
                     ──→  (Cursor rules use .cursor/rules/*.mdc and are not synced yet)
+
+.my-ai/instructions/PROJECT.md  ──→  CLAUDE.md
+                                ──→  AGENTS.md
+                                ──→  (Windsurf reads AGENTS.md too)
 ```
 
 - One format, one source of truth
@@ -44,13 +48,15 @@ Requires Node.js 20.12+.
 ## Quick Start
 
 ```bash
-# 1. Initialize — creates .my-ai/ with an example skill (and optionally rules)
+# 1. Initialize — creates .my-ai/ with an example skill (and optionally rules / project instructions)
 aisyncer init
 aisyncer init --with-rules
+aisyncer init --with-instructions
 
-# 2. Validate — check all skills (and rules) are well-formed
+# 2. Validate — check all skills, rules, and project instructions are well-formed
 aisyncer validate
 aisyncer validate --with-rules
+aisyncer validate --with-instructions
 
 # 3. Interactive sync — guided prompts, no flags needed
 aisyncer sync
@@ -58,33 +64,38 @@ aisyncer sync
 # 4. Preview — see what sync would do (dry-run, no writes)
 aisyncer sync --to claude,codex,cursor,windsurf
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
+aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions
 
 # 5. Apply — actually write to platform directories
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
+aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions --write
 
 # 6. Compare local .my-ai against a GitHub repo
 aisyncer diff --from github:my-org/ai-config
+aisyncer diff --from github:my-org/ai-config --with-instructions
 
 # 7. Update local .my-ai from a GitHub repo
 aisyncer pull --from github:my-org/ai-config --write
+aisyncer pull --from github:my-org/ai-config --with-instructions --write
 ```
 
-> `--sync-rules` writes rules to Windsurf only. Claude, Codex, and Cursor targets print a skip note for rules.
+> `--sync-rules` writes rules to Windsurf only. `--sync-instructions` writes shared content to `AGENTS.md` and a thin import wrapper to `CLAUDE.md`. Even `--to claude` will materialize `AGENTS.md` first so the import never dangles.
 
-That's it. Skills and rules, five commands, no config files, no databases.
+That's it. Skills, rules, project instructions, five commands, no config files, no databases.
 
 ## Commands
 
 ### `aisyncer init`
 
-Create a `.my-ai/` directory with an example skill (and optionally an example rule).
+Create a `.my-ai/` directory with an example skill (and optionally an example rule or project instructions).
 
 ```bash
 aisyncer init
 aisyncer init --with-rules
+aisyncer init --with-instructions
 ```
 
-Or import skills and rules from a GitHub repository:
+Or import skills, rules, and project instructions from a GitHub repository:
 
 ```bash
 # All of these work — paste whatever you have
@@ -94,7 +105,7 @@ aisyncer init --from https://github.com/owner/repo
 aisyncer init --from https://github.com/owner/repo.git
 ```
 
-The remote repository must follow this structure (`rules/` is optional):
+The remote repository must follow this structure (`rules/` and `instructions/` are optional):
 
 ```
 skills/                    ← required
@@ -107,6 +118,8 @@ skills/                    ← required
 rules/                     ← optional, auto-detected
   my-rule/
     RULE.md
+instructions/             ← optional, auto-detected
+  PROJECT.md
 ```
 
 Both `skills/` and `rules/` are automatically detected — no extra flags needed.
@@ -118,15 +131,16 @@ export GITHUB_TOKEN=ghp_xxx
 aisyncer init --from github:owner/private-repo
 ```
 
-> No git clone. We use the GitHub REST API to fetch full `skills/<id>/` directories (with `SKILL.md` as the entry point) and `rules/<id>/RULE.md` files.
+> No git clone. We use the GitHub REST API to fetch full `skills/<id>/` directories (with `SKILL.md` as the entry point), `rules/<id>/RULE.md`, and `instructions/PROJECT.md`.
 
 ### `aisyncer validate`
 
-Validate all skills in `.my-ai/skills/` (and optionally rules in `.my-ai/rules/`).
+Validate all skills in `.my-ai/skills/` (and optionally rules in `.my-ai/rules/` and project instructions in `.my-ai/instructions/PROJECT.md`).
 
 ```bash
 aisyncer validate
 aisyncer validate --with-rules
+aisyncer validate --with-instructions
 ```
 
 What it checks:
@@ -153,11 +167,11 @@ aisyncer sync
 The interactive flow will:
 
 1. Check that `.my-ai/` exists
-2. Scan for available skills and rules
+2. Scan for available skills, rules, and project instructions
 3. Prompt you to select target platforms (claude, codex, cursor, windsurf)
-4. Prompt you to select resource types (skills, rules — filtered by platform support)
+4. Prompt you to select resource types (skills, rules, project instructions — filtered by platform support)
 5. Ask whether stale generated resources should be pruned
-6. Optionally ask for a custom Claude, Codex, or Cursor output directory
+6. If syncing skills, optionally ask for a custom Claude, Codex, or Cursor output directory
 7. Preview all changes (ADD / SKIP / OVERWRITE / DELETE)
 8. Ask for confirmation before writing
 
@@ -176,11 +190,16 @@ aisyncer sync --to claude,codex,cursor,windsurf
 # Include rules
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
+# Include project instructions
+aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions
+
 # Actually write files
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
+aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions --write
 
 # Also delete generated resources that are no longer present in .my-ai
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --prune --write
+aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions --prune --write
 
 # Custom output directory for Claude
 aisyncer sync --to claude --claude-dir ./custom-path --write
@@ -197,6 +216,12 @@ Rules sync behavior:
 - Claude: skipped (Claude uses `CLAUDE.md`, not `.claude/rules/`)
 - Codex: skipped (Codex has no rules directory; use `AGENTS.md` for project instructions)
 - Cursor: skipped (Cursor project rules use `.cursor/rules/*.mdc` and are not synced yet)
+
+Project instructions sync behavior:
+- Codex: updates the managed `aisyncer` block in `AGENTS.md`
+- Cursor: also uses `AGENTS.md`; when Codex and Cursor are selected together, `aisyncer` updates that file once
+- Windsurf: also uses `AGENTS.md`; when selected with Codex/Cursor, `aisyncer` still updates that file once
+- Claude: writes shared content to `AGENTS.md` and a managed wrapper block in `CLAUDE.md` that imports it
 
 Sync logic per resource:
 
@@ -217,6 +242,8 @@ Output directories:
 - Cursor: `.cursor/skills/<id>/SKILL.md` by default; you can override the root with `--cursor-dir`
 - Windsurf: `.windsurf/skills/<id>/SKILL.md`, `.windsurf/rules/<id>.md`
 
+Project instructions are synced through managed marker blocks rather than whole-file replacement, so your hand-written `CLAUDE.md` or `AGENTS.md` content stays intact outside the `aisyncer` block. When both Claude and AGENTS-based tools are selected, the shared body lives in `AGENTS.md` and `CLAUDE.md` imports it to avoid duplicating the same text twice.
+
 ### `aisyncer pull`
 
 Fetch resources from a GitHub repository and update your local `.my-ai/` directory.
@@ -228,8 +255,12 @@ aisyncer pull --from github:my-org/ai-config
 # Pull skills and rules
 aisyncer pull --from github:my-org/ai-config --with-rules --write
 
+# Pull project instructions too
+aisyncer pull --from github:my-org/ai-config --with-instructions --write
+
 # Remove local resources that no longer exist remotely
 aisyncer pull --from github:my-org/ai-config --with-rules --prune --write
+aisyncer pull --from github:my-org/ai-config --with-rules --with-instructions --prune --write
 ```
 
 `pull` uses the same planning model as `sync`: `ADD`, `SKIP`, `OVERWRITE`, and, when `--prune` is enabled, `DELETE`.
@@ -241,7 +272,9 @@ Show what would change in local `.my-ai/` compared with a GitHub repository, wit
 ```bash
 aisyncer diff --from github:my-org/ai-config
 aisyncer diff --from github:my-org/ai-config --with-rules
+aisyncer diff --from github:my-org/ai-config --with-instructions
 aisyncer diff --from github:my-org/ai-config --with-rules --prune
+aisyncer diff --from github:my-org/ai-config --with-rules --with-instructions --prune
 ```
 
 `diff` is effectively a dry-run for `pull`. It is useful when you want to review incoming changes before updating your canonical source.
@@ -348,6 +381,20 @@ Follow these code style conventions in all files.
 | `metadata.version` | string | No | Semantic version |
 | `metadata.tags` | string[] | No | Tags for organization |
 
+## Project Instructions Format
+
+Project instructions live at `.my-ai/instructions/PROJECT.md`. Unlike skills and rules, this file is plain markdown with no frontmatter:
+
+```markdown
+# Project Instructions
+
+- Prefer minimal, focused changes
+- Update tests when behavior changes
+- Keep generated files derived from `.my-ai`
+```
+
+`aisyncer` syncs this markdown into a managed block inside `AGENTS.md`. If Claude is selected, it writes a managed `@AGENTS.md` import block into `CLAUDE.md`.
+
 ## Directory Structure
 
 ```
@@ -363,12 +410,14 @@ your-project/
     rules/
       code-style/
         RULE.md
+    instructions/
+      PROJECT.md
 
   .claude/                 ← Generated by `aisyncer sync` (do not edit)
     skills/
       code-review/
         SKILL.md
-  CLAUDE.md                ← Claude instructions (no `.claude/rules/`)
+  CLAUDE.md                ← Contains an `aisyncer`-managed wrapper that imports `AGENTS.md`
 
   .cursor/                 ← Generated by `aisyncer sync` for skills
     skills/
@@ -376,6 +425,8 @@ your-project/
         SKILL.md
     rules/
       my-rule.mdc          ← Native Cursor project rules, not generated by `aisyncer`
+
+  AGENTS.md                ← Contains an `aisyncer`-managed project instructions block for Codex/Cursor/Windsurf
 
   .windsurf/               ← Generated by `aisyncer sync` (do not edit)
     skills/
@@ -420,7 +471,7 @@ The sync hash covers all meaningful fields (name, description, allowedTools, met
 
 ## Sharing via GitHub
 
-You can maintain a shared repository of skills and rules for your team:
+You can maintain a shared repository of skills, rules, and project instructions for your team:
 
 ```
 my-org/ai-config/
@@ -432,6 +483,8 @@ my-org/ai-config/
   rules/                     ← optional
     code-style/
       RULE.md
+  instructions/              ← optional
+    PROJECT.md
 ```
 
 Team members pull everything with:
@@ -440,7 +493,7 @@ Team members pull everything with:
 aisyncer init --from github:my-org/ai-config
 ```
 
-This fetches skills and rules via the GitHub API (no clone needed) and writes them to `.my-ai/`. From there, `aisyncer sync` distributes skills to Claude/Codex/Windsurf and rules to Windsurf.
+This fetches skills, rules, and project instructions via the GitHub API (no clone needed) and writes them to `.my-ai/`. From there, `aisyncer sync` distributes skills to platform skill directories, rules to Windsurf, and project instructions to `AGENTS.md` plus a `CLAUDE.md` import wrapper when needed.
 
 Live example repository:
 
@@ -458,9 +511,9 @@ aisyncer init --from github:goWrongWay/skills-repo
 
 Sync rule files to Windsurf (`.windsurf/rules/*.md`) with the same one-way model. Claude instructions remain in `CLAUDE.md`.
 
-### v0.3 — Memory
+### v0.3 — Project Instructions ✓
 
-Sync memory/context files that persist across sessions.
+Sync `.my-ai/instructions/PROJECT.md` into a managed `AGENTS.md` block plus a `CLAUDE.md` import wrapper.
 
 ### v0.4 — Workflows
 
