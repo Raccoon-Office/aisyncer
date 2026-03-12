@@ -3,9 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { syncCommand } from "../src/cli/commands/sync.js";
-import { emitSkill, emitRule } from "../src/core/parser.js";
+import { emitSkill, emitRule, emitWorkflow } from "../src/core/parser.js";
 import { emitProjectInstructions } from "../src/core/project-instructions.js";
-import type { SkillSpec, RuleSpec } from "../src/core/schema.js";
+import type { SkillSpec, RuleSpec, WorkflowSpec } from "../src/core/schema.js";
 
 const SAMPLE_SKILL: SkillSpec = {
   schemaVersion: 1,
@@ -21,6 +21,14 @@ const SAMPLE_RULE: RuleSpec = {
   name: "Codex Rule",
   description: "Rule for Codex sync tests",
   content: "# Codex Rule\n\nContent here.",
+};
+
+const SAMPLE_WORKFLOW: WorkflowSpec = {
+  schemaVersion: 1,
+  id: "review-release",
+  name: "Review Release",
+  description: "Workflow for Cursor and Windsurf sync tests",
+  content: "# Review Release\n\n1. Summarize changes.\n2. Run validations.\n",
 };
 
 function writeCanonicalSkill(
@@ -43,6 +51,12 @@ function writeCanonicalRule(baseDir: string, rule: RuleSpec): void {
   const dir = path.join(baseDir, ".my-ai", "rules", rule.id);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "RULE.md"), emitRule(rule), "utf-8");
+}
+
+function writeCanonicalWorkflow(baseDir: string, workflow: WorkflowSpec): void {
+  const dir = path.join(baseDir, ".my-ai", "workflows", workflow.id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "WORKFLOW.md"), emitWorkflow(workflow), "utf-8");
 }
 
 function writeCanonicalProjectInstructions(baseDir: string, content = "# Project Instructions\n\n- Keep changes focused.\n"): void {
@@ -132,6 +146,33 @@ describe("syncCommand", () => {
 
     expect(logSpy).toHaveBeenCalledWith("No supported rules target selected. Rules sync currently targets windsurf (.windsurf/rules/*.md) only.");
     expect(logSpy).toHaveBeenCalledWith("Cursor rules sync is not supported yet. Manage project rules in .cursor/rules/*.mdc.");
+  });
+
+  it("writes workflows to the cursor commands directory", async () => {
+    const cursorDir = path.join(tmpDir, ".cursor-output");
+    writeCanonicalWorkflow(tmpDir, SAMPLE_WORKFLOW);
+
+    await syncCommand({ to: "cursor", write: true, cursorDir, syncWorkflows: true });
+
+    expect(fs.existsSync(path.join(cursorDir, "commands", `${SAMPLE_WORKFLOW.id}.md`))).toBe(true);
+  });
+
+  it("writes workflows to the windsurf workflows directory", async () => {
+    writeCanonicalWorkflow(tmpDir, SAMPLE_WORKFLOW);
+
+    await syncCommand({ to: "windsurf", write: true, syncWorkflows: true });
+
+    expect(fs.existsSync(path.join(tmpDir, ".windsurf", "workflows", `${SAMPLE_WORKFLOW.id}.md`))).toBe(true);
+  });
+
+  it("prints the codex workflows skip note when no workflow target is selected", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    writeCanonicalWorkflow(tmpDir, SAMPLE_WORKFLOW);
+
+    await syncCommand({ to: "codex", syncWorkflows: true });
+
+    expect(logSpy).toHaveBeenCalledWith("No supported workflows target selected. Workflow sync currently targets Cursor (.cursor/commands/*.md) and Windsurf (.windsurf/workflows/*.md) only.");
+    expect(logSpy).toHaveBeenCalledWith("Codex workflow sync is not supported yet.");
   });
 
   it("writes shared project instructions to AGENTS.md and a wrapper import to CLAUDE.md", async () => {

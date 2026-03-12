@@ -37,13 +37,14 @@ npx vitest run --grep "plans ADD"
 One-way sync tool:
 - Skills: `.my-ai/skills/<id>/` (with `SKILL.md` as the entry point) → mirrored into `.claude/skills/<id>/`, `.agents/skills/<id>/` (Codex repo scope by default), `.cursor/skills/<id>/`, and `.windsurf/skills/<id>/`
 - Rules: `.my-ai/rules/<id>/RULE.md` → `.windsurf/rules/<id>.md` (Claude rules are managed via `CLAUDE.md`)
+- Workflows: `.my-ai/workflows/<id>/WORKFLOW.md` → `.cursor/commands/<id>.md` and `.windsurf/workflows/<id>.md`
 
-Supports multiple resource types (skills, rules) via a generic `ResourceConfig<T>` system. Adding a new resource type does NOT require changing `resource.ts`, `PlatformAdapter`, or any generic infrastructure — only a new schema + config + CLI wiring.
+Supports multiple resource types (skills, rules, workflows) via a generic `ResourceConfig<T>` system. Adding a new resource type does NOT require changing `resource.ts`, `PlatformAdapter`, or any generic infrastructure — only a new schema + config + CLI wiring.
 
 ### Data flow (same for all resource types)
 
 ```
-Skill directory / RULE.md file
+Skill directory / RULE.md / WORKFLOW.md file
   → parseResource() [gray-matter: frontmatter + markdown]
   → validateResource() [zod schema via ResourceConfig]
   → hashResource() / skill directory snapshot [SHA-256]
@@ -51,20 +52,20 @@ Skill directory / RULE.md file
   → executeResourceSync() / executeSync() [write via PlatformAdapter]
 ```
 
-Convenience wrappers exist per type: `parseSkill()`, `hashRule()`, `planSync()`, etc.
+Convenience wrappers exist per type: `parseSkill()`, `hashRule()`, `planWorkflowSync()`, etc.
 
 ### Module relationships
 
 - **`core/resource.ts`** — Generic infrastructure: `ResourceConfig<T>`, `parseResource()`, `emitResource()`, `hashResource()`, `validateResource()`, `loadCanonicalResources()`, `planResourceSync()`, `executeResourceSync()`, `validateResourceDir()`. All resource-type-agnostic.
-- **`core/schema.ts`** — `SkillSpecSchema` + `RuleSpecSchema` (zod), `validateSkill()` / `validateRule()`, `skillConfig` / `ruleConfig` (ResourceConfig instances). Shared field patterns extracted (idField, nameField, etc.).
-- **`core/parser.ts`** — Thin wrappers: `parseSkill()` / `parseRule()` → `parseResource()`, `emitSkill()` / `emitRule()` → `emitResource()`.
-- **`core/hash.ts`** — Thin wrappers: `hashSkill()` / `hashRule()` → `hashResource()` with respective configs.
-- **`core/validator.ts`** — `validateSkillsDir()` / `validateRulesDir()` → `validateResourceDir()` with respective configs.
-- **`core/sync.ts`** — `loadCanonicalSkills()` / `loadCanonicalRules()`, `planSync()` / `planRuleSync()`, `executeSync()` / `executeRuleSync()`. All delegate to generic resource functions.
+- **`core/schema.ts`** — `SkillSpecSchema` + `RuleSpecSchema` + `WorkflowSpecSchema` (zod), validation helpers, and matching `ResourceConfig` instances. Shared field patterns extracted (idField, nameField, etc.).
+- **`core/parser.ts`** — Thin wrappers: `parseSkill()` / `parseRule()` / `parseWorkflow()` → `parseResource()`, matching `emit*()` helpers → `emitResource()`.
+- **`core/hash.ts`** — Thin wrappers: `hashSkill()` / `hashRule()` / `hashWorkflow()` → `hashResource()` with respective configs.
+- **`core/validator.ts`** — `validateSkillsDir()` / `validateRulesDir()` / `validateWorkflowsDir()` → `validateResourceDir()` with respective configs.
+- **`core/sync.ts`** — `loadCanonicalSkills()` / `loadCanonicalRules()` / `loadCanonicalWorkflows()`, plus their `plan*Sync()` / `execute*Sync()` helpers. All delegate to generic resource functions.
 - **`adapters/base.ts`** — `PlatformAdapter` interface with 3 generic methods: `resourcePath()`, `readResource()`, `writeResource()`. `createAdapter()` factory implements all via `ResourceConfig.dirName` + `ResourceConfig.fileName`. No resource-type-specific code.
-- **`adapters/claude.ts`** / **`codex.ts`** / **`cursor.ts`** / **`windsurf.ts`** — Platform adapters; Codex skills default to repo-scoped `.agents/skills`, Cursor skills default to `.cursor/skills`, both can be redirected with `--codex-dir` / `--cursor-dir`, and Windsurf rules use flat `.windsurf/rules/<id>.md` paths.
+- **`adapters/claude.ts`** / **`codex.ts`** / **`cursor.ts`** / **`windsurf.ts`** — Platform adapters; Codex skills default to repo-scoped `.agents/skills`, Cursor skills default to `.cursor/skills` and workflows to `.cursor/commands`, both can be redirected with `--codex-dir` / `--cursor-dir`, and Windsurf rules/workflows use flat `.windsurf/rules/<id>.md` / `.windsurf/workflows/<id>.md` paths.
 - **`github/fetch.ts`** — `parseGitHubSource()` handles `github:owner/repo`, `github:owner/repo.git`, full URLs. `fetchFromGitHub()` uses tree API + blob API, no git clone. Falls back from `main` to `master`.
-- **`cli/commands/`** — `init` (`--with-rules`), `validate` (`--with-rules`), `sync` (`--sync-rules` for Windsurf rules, `--claude-dir` / `--codex-dir` / `--cursor-dir` overrides, dry-run default, `--write` to apply).
+- **`cli/commands/`** — `init` (`--with-rules`, `--with-workflows`), `validate` (`--with-rules`, `--with-workflows`), `sync` (`--sync-rules`, `--sync-workflows`, `--claude-dir` / `--codex-dir` / `--cursor-dir` overrides, dry-run default, `--write` to apply).
 
 ### Adding a new resource type
 
@@ -90,4 +91,4 @@ No changes needed to `resource.ts` or `adapters/base.ts`.
 - `emitResource()` uses `yaml.stringify(..., { lineWidth: 0 })` to avoid line wrapping
 - Claude has no `.claude/rules` target; keep project instructions in `CLAUDE.md`
 - Codex has no rules target; keep project instructions in `AGENTS.md`
-- Cursor skills live in `.cursor/skills`; project rules use `.cursor/rules/*.mdc` and are not synced yet
+- Cursor skills live in `.cursor/skills`; workflows live in `.cursor/commands`; project rules use `.cursor/rules/*.mdc` and are not synced yet

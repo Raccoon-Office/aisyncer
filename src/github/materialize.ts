@@ -1,20 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
-import { parseSkill, parseRule } from "../core/parser.js";
+import { parseSkill, parseRule, parseWorkflow } from "../core/parser.js";
 import {
   emitProjectInstructions,
   parseProjectInstructions,
 } from "../core/project-instructions.js";
-import { validateSkill, validateRule } from "../core/schema.js";
-import type { SkillSpec, RuleSpec } from "../core/schema.js";
+import { validateSkill, validateRule, validateWorkflow } from "../core/schema.js";
+import type { SkillSpec, RuleSpec, WorkflowSpec } from "../core/schema.js";
 import type { FetchResult } from "./fetch.js";
 
 export interface MaterializeResult {
   skillsWritten: number;
   rulesWritten: number;
+  workflowsWritten: number;
   projectInstructionsWritten: boolean;
   writtenSkillIds: string[];
   writtenRuleIds: string[];
+  writtenWorkflowIds: string[];
   validationErrors: string[];
 }
 
@@ -24,12 +26,15 @@ export function materializeFetchedResources(
 ): MaterializeResult {
   const skillsDir = path.join(baseDir, "skills");
   const rulesDir = path.join(baseDir, "rules");
+  const workflowsDir = path.join(baseDir, "workflows");
   const instructionsDir = path.join(baseDir, "instructions");
   let skillsWritten = 0;
   let rulesWritten = 0;
+  let workflowsWritten = 0;
   let projectInstructionsWritten = false;
   const writtenSkillIds: string[] = [];
   const writtenRuleIds: string[] = [];
+  const writtenWorkflowIds: string[] = [];
   const validationErrors: string[] = [];
 
   for (const remote of result.skills) {
@@ -101,6 +106,28 @@ export function materializeFetchedResources(
     writtenRuleIds.push(validation.data.id);
   }
 
+  for (const remote of result.workflows) {
+    let workflow: WorkflowSpec;
+    try {
+      workflow = parseWorkflow(remote.content);
+    } catch {
+      validationErrors.push(`workflow ${remote.id}: Failed to parse frontmatter`);
+      continue;
+    }
+
+    const validation = validateWorkflow(workflow);
+    if (!validation.success) {
+      validationErrors.push(`workflow ${remote.id}: ${validation.errors.join("; ")}`);
+      continue;
+    }
+
+    const dir = path.join(workflowsDir, validation.data.id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "WORKFLOW.md"), remote.content, "utf-8");
+    workflowsWritten++;
+    writtenWorkflowIds.push(validation.data.id);
+  }
+
   if (result.projectInstructions) {
     const parsed = parseProjectInstructions(result.projectInstructions.content);
     if (parsed.content.length === 0) {
@@ -119,9 +146,11 @@ export function materializeFetchedResources(
   return {
     skillsWritten,
     rulesWritten,
+    workflowsWritten,
     projectInstructionsWritten,
     writtenSkillIds,
     writtenRuleIds,
+    writtenWorkflowIds,
     validationErrors,
   };
 }

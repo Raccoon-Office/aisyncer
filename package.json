@@ -1,14 +1,14 @@
 {
   "name": "aisyncer",
-  "version": "0.3.6",
-  "description": "CLI tool for syncing AI skills, rules, and configs across Claude, Codex, Cursor, and Windsurf",
+  "version": "0.4.0",
+  "description": "CLI tool for syncing AI skills, rules, workflows, and project instructions across Claude, Codex, Cursor, and Windsurf",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/goWrongWay/aisyncer.git"
+    "url": "git+https://github.com/Raccoon-Office/aisyncer.git"
   },
-  "homepage": "https://github.com/goWrongWay/aisyncer#readme",
+  "homepage": "https://github.com/Raccoon-Office/aisyncer#readme",
   "bugs": {
-    "url": "https://github.com/goWrongWay/aisyncer/issues"
+    "url": "https://github.com/Raccoon-Office/aisyncer/issues"
   },
   "type": "module",
   "bin": {
@@ -33,6 +33,7 @@
     "sync",
     "skills",
     "rules",
+    "workflows",
     "claude",
     "codex",
     "cursor",

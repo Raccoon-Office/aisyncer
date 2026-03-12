@@ -8,12 +8,20 @@ export type { SyncAction, CanonicalSkill } from "./core/sync.js";
 export { validateSkillsDir } from "./core/validator.js";
 
 // Rules
-export { RuleSpecSchema, validateRule } from "./core/schema.js";
+export { RuleSpecSchema, WorkflowSpecSchema, validateRule, validateWorkflow } from "./core/schema.js";
 export type { RuleSpec } from "./core/schema.js";
-export { parseRule, emitRule } from "./core/parser.js";
-export { hashRule } from "./core/hash.js";
-export { loadCanonicalRules, planRuleSync, executeRuleSync } from "./core/sync.js";
-export { validateRulesDir } from "./core/validator.js";
+export type { WorkflowSpec } from "./core/schema.js";
+export { parseRule, emitRule, parseWorkflow, emitWorkflow } from "./core/parser.js";
+export { hashRule, hashWorkflow } from "./core/hash.js";
+export {
+  loadCanonicalRules,
+  loadCanonicalWorkflows,
+  planRuleSync,
+  planWorkflowSync,
+  executeRuleSync,
+  executeWorkflowSync,
+} from "./core/sync.js";
+export { validateRulesDir, validateWorkflowsDir } from "./core/validator.js";
 
 // Project instructions
 export {

@@ -102,3 +102,46 @@ export const ruleConfig: ResourceConfig<RuleSpec> = {
     content: rule.content,
   }),
 };
+
+// -- WorkflowSpec --
+
+export const WorkflowSpecSchema = z.object({
+  schemaVersion: z.literal(1),
+  id: idField,
+  name: nameField,
+  description: descriptionField,
+  content: contentField,
+  metadata: metadataField,
+});
+
+export type WorkflowSpec = z.infer<typeof WorkflowSpecSchema>;
+
+export function validateWorkflow(data: unknown): {
+  success: true;
+  data: WorkflowSpec;
+} | {
+  success: false;
+  errors: string[];
+} {
+  const result = WorkflowSpecSchema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+  const errors = result.error.issues.map(
+    (issue) => `${issue.path.join(".")}: ${issue.message}`,
+  );
+  return { success: false, errors };
+}
+
+export const workflowConfig: ResourceConfig<WorkflowSpec> = {
+  name: "workflow",
+  fileName: "WORKFLOW.md",
+  dirName: "workflows",
+  schema: WorkflowSpecSchema,
+  hashFields: (workflow) => ({
+    name: workflow.name,
+    description: workflow.description,
+    metadata: workflow.metadata ?? null,
+    content: workflow.content,
+  }),
+};

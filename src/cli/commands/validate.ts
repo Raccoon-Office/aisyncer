@@ -1,12 +1,16 @@
 import path from "node:path";
-import { validateSkillsDir, validateRulesDir } from "../../core/validator.js";
+import { validateSkillsDir, validateRulesDir, validateWorkflowsDir } from "../../core/validator.js";
 import {
   canonicalProjectInstructionsPath,
   validateProjectInstructionsFile,
 } from "../../core/project-instructions.js";
 import type { ValidationResult } from "../../core/resource.js";
 
-export async function validateCommand(options: { withRules?: boolean; withInstructions?: boolean }): Promise<void> {
+export async function validateCommand(options: {
+  withRules?: boolean;
+  withInstructions?: boolean;
+  withWorkflows?: boolean;
+}): Promise<void> {
   const skillsDir = path.resolve(".my-ai", "skills");
   const allResults: ValidationResult[] = [];
 
@@ -58,6 +62,26 @@ export async function validateCommand(options: { withRules?: boolean; withInstru
       console.log("Project instructions are valid.\n");
     } else {
       for (const result of instructionResults) {
+        console.error(`[ERROR] ${result.file}`);
+        for (const error of result.errors) {
+          console.error(`  - ${error}`);
+        }
+        console.error();
+      }
+    }
+  }
+
+  if (options.withWorkflows) {
+    const workflowsDir = path.resolve(".my-ai", "workflows");
+    console.log(`Validating workflows in ${workflowsDir}...\n`);
+
+    const workflowResults = validateWorkflowsDir(workflowsDir);
+    allResults.push(...workflowResults);
+
+    if (workflowResults.length === 0) {
+      console.log("All workflows are valid.\n");
+    } else {
+      for (const result of workflowResults) {
         console.error(`[ERROR] ${result.file}`);
         for (const error of result.errors) {
           console.error(`  - ${error}`);
