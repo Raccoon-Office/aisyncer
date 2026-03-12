@@ -50,6 +50,10 @@ describe("initCommand", () => {
         },
       ],
       rules: [],
+      projectInstructions: {
+        path: "instructions/PROJECT.md",
+        content: "# Project Instructions\n\n- Keep tests updated.\n",
+      },
       errors: [],
     });
 
@@ -58,5 +62,8 @@ describe("initCommand", () => {
     expect(fs.existsSync(path.join(tmpDir, ".my-ai", "skills", SAMPLE_SKILL.id, "SKILL.md"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".my-ai", "skills", SAMPLE_SKILL.id, "references", "checklist.md"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".my-ai", "skills", SAMPLE_SKILL.id, "scripts", "review.sh"))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, ".my-ai", "instructions", "PROJECT.md"), "utf-8")).toBe(
+      "# Project Instructions\n\n- Keep tests updated.\n",
+    );
   });
 });

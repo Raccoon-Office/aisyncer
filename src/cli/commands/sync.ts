@@ -4,6 +4,13 @@ import { createCodexAdapter } from "../../adapters/codex.js";
 import { createCursorAdapter } from "../../adapters/cursor.js";
 import { createWindsurfAdapter } from "../../adapters/windsurf.js";
 import type { PlatformAdapter } from "../../adapters/base.js";
+import {
+  canonicalProjectInstructionsPath,
+  executeManagedProjectInstructionsSync,
+  loadProjectInstructions,
+  planManagedProjectInstructionsSync,
+  type ProjectInstructionsTarget,
+} from "../../core/project-instructions.js";
 import { loadCanonicalSkills, planSync, executeSync } from "../../core/sync.js";
 import { loadCanonicalRules, planRuleSync, executeRuleSync } from "../../core/sync.js";
 import { interactiveSyncFlow } from "./interactive-sync.js";
@@ -16,6 +23,7 @@ interface SyncOptions {
   codexDir?: string;
   cursorDir?: string;
   syncRules?: boolean;
+  syncInstructions?: boolean;
 }
 
 type PlatformName = "claude" | "codex" | "cursor" | "windsurf";
@@ -30,6 +38,7 @@ const PLATFORM_ADAPTERS = {
 
 export const SUPPORTED_PLATFORMS = Object.keys(PLATFORM_ADAPTERS) as PlatformName[];
 export const RULE_SYNC_PLATFORMS = new Set<string>(["windsurf"]);
+export const INSTRUCTION_SYNC_PLATFORMS = new Set<string>(["claude", "codex", "cursor", "windsurf"]);
 const RULE_SKIP_NOTES = {
   claude: "Claude uses CLAUDE.md for project instructions.",
   codex: "Codex has no rules sync target. Use AGENTS.md for project instructions.",
@@ -51,12 +60,23 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
   const rules = options.syncRules
     ? loadCanonicalRules(path.resolve(".my-ai", "rules"))
     : [];
+  const projectInstructions = options.syncInstructions
+    ? loadProjectInstructions(canonicalProjectInstructionsPath(path.resolve(".my-ai")))
+    : null;
 
   const hasRuleTarget = platforms.some((p) => RULE_SYNC_PLATFORMS.has(p));
+  const hasInstructionTarget = platforms.some((p) => INSTRUCTION_SYNC_PLATFORMS.has(p));
 
-  if (skills.length === 0 && rules.length === 0) {
-    if (options.syncRules) {
+  if (skills.length === 0
+    && rules.length === 0
+    && !projectInstructions
+    && !(options.syncInstructions && options.prune)) {
+    if (options.syncRules && options.syncInstructions) {
+      console.log("No valid skills, rules, or project instructions found in .my-ai. Run 'aisyncer init' first.");
+    } else if (options.syncRules) {
       console.log("No valid skills or rules found in .my-ai. Run 'aisyncer init' first.");
+    } else if (options.syncInstructions) {
+      console.log("No valid skills or project instructions found in .my-ai. Run 'aisyncer init' first.");
     } else {
       console.log("No valid skills found in .my-ai/skills. Run 'aisyncer init' first.");
     }
@@ -70,7 +90,10 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
         console.log(ruleSkipNote(platform));
       }
     }
-    return;
+
+    if (!options.syncInstructions || !hasInstructionTarget) {
+      return;
+    }
   }
 
   const dryRun = !options.write;
@@ -120,6 +143,33 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
     }
   }
 
+  if (options.syncInstructions && hasInstructionTarget) {
+    const targets = resolveInstructionTargets(platforms);
+    const actions = targets.flatMap((target) => {
+      const action = planManagedProjectInstructionsSync(
+        projectInstructions,
+        target,
+        { prune: options.prune },
+      );
+      return action ? [action] : [];
+    });
+
+    if (actions.length > 0) {
+      console.log("Syncing project instructions...");
+      for (const action of actions) {
+        const label = actionLabel(action.action);
+        console.log(`  ${label} ${action.target.label} → ${action.target.targetPath}`);
+        if (action.action !== "skip") hasChanges = true;
+      }
+      if (!dryRun) {
+        for (const action of actions) {
+          executeManagedProjectInstructionsSync(projectInstructions, action);
+        }
+      }
+      console.log();
+    }
+  }
+
   if (dryRun && hasChanges) {
     console.log("Run with --write to apply these changes.");
   } else if (!hasChanges) {
@@ -158,6 +208,38 @@ function resolveAdapter(platform: PlatformName, options: SyncOptions): PlatformA
 
 function ruleSkipNote(platform: RuleUnsupportedPlatform): string {
   return RULE_SKIP_NOTES[platform];
+}
+
+export function resolveInstructionTargets(platforms: PlatformName[]): ProjectInstructionsTarget[] {
+  const targets: ProjectInstructionsTarget[] = [];
+
+  const sharedLabels = ["codex", "cursor", "windsurf"].filter((platform) =>
+    platforms.includes(platform as PlatformName),
+  );
+  const needsSharedAgentsFile = platforms.includes("claude") || sharedLabels.length > 0;
+
+  if (needsSharedAgentsFile) {
+    const labels = sharedLabels.length > 0 ? sharedLabels : ["claude"];
+
+    targets.push({
+      key: "agents",
+      label: labels.join("/"),
+      targetPath: path.resolve("AGENTS.md"),
+      mode: "inline",
+    });
+  }
+
+  if (platforms.includes("claude")) {
+    targets.push({
+      key: "claude",
+      label: "claude",
+      targetPath: path.resolve("CLAUDE.md"),
+      mode: "import",
+      importPath: "AGENTS.md",
+    });
+  }
+
+  return targets;
 }
 
 function actionLabel(action: string): string {

@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { syncCommand } from "../src/cli/commands/sync.js";
 import { emitSkill, emitRule } from "../src/core/parser.js";
+import { emitProjectInstructions } from "../src/core/project-instructions.js";
 import type { SkillSpec, RuleSpec } from "../src/core/schema.js";
 
 const SAMPLE_SKILL: SkillSpec = {
@@ -42,6 +43,12 @@ function writeCanonicalRule(baseDir: string, rule: RuleSpec): void {
   const dir = path.join(baseDir, ".my-ai", "rules", rule.id);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "RULE.md"), emitRule(rule), "utf-8");
+}
+
+function writeCanonicalProjectInstructions(baseDir: string, content = "# Project Instructions\n\n- Keep changes focused.\n"): void {
+  const filePath = path.join(baseDir, ".my-ai", "instructions", "PROJECT.md");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, emitProjectInstructions({ content }), "utf-8");
 }
 
 describe("syncCommand", () => {
@@ -125,5 +132,71 @@ describe("syncCommand", () => {
 
     expect(logSpy).toHaveBeenCalledWith("No supported rules target selected. Rules sync currently targets windsurf (.windsurf/rules/*.md) only.");
     expect(logSpy).toHaveBeenCalledWith("Cursor rules sync is not supported yet. Manage project rules in .cursor/rules/*.mdc.");
+  });
+
+  it("writes shared project instructions to AGENTS.md and a wrapper import to CLAUDE.md", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    writeCanonicalProjectInstructions(tmpDir);
+
+    await syncCommand({ to: "claude,codex,cursor,windsurf", write: true, syncInstructions: true });
+
+    const claudeContent = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+    const agentsContent = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+
+    expect(claudeContent).toContain("aisyncer:project-instructions:start");
+    expect(claudeContent).toContain("@AGENTS.md");
+    expect(claudeContent).not.toContain("Keep changes focused.");
+    expect(agentsContent).toContain("aisyncer:project-instructions:start");
+    expect(agentsContent).toContain("Keep changes focused.");
+    expect((agentsContent.match(/aisyncer:project-instructions:start/g) ?? [])).toHaveLength(1);
+    expect(logSpy).toHaveBeenCalledWith("Syncing project instructions...");
+  });
+
+  it("generates AGENTS.md first when syncing project instructions to claude only", async () => {
+    writeCanonicalProjectInstructions(tmpDir);
+
+    await syncCommand({ to: "claude", write: true, syncInstructions: true });
+
+    const claudeContent = fs.readFileSync(path.join(tmpDir, "CLAUDE.md"), "utf-8");
+    const agentsContent = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+
+    expect(agentsContent).toContain("Keep changes focused.");
+    expect(claudeContent).toContain("@AGENTS.md");
+    expect(claudeContent).not.toContain("Keep changes focused.");
+  });
+
+  it("prunes the managed project instructions block when the canonical file is missing", async () => {
+    const managedAgents = [
+      "# Existing Instructions",
+      "",
+      "<!-- aisyncer:project-instructions:start -->",
+      "<!-- Managed by aisyncer. Edit .my-ai/instructions/PROJECT.md instead. -->",
+      "",
+      "# Project Instructions",
+      "",
+      "- Old content.",
+      "<!-- aisyncer:project-instructions:end -->",
+      "",
+      "Manual footer.",
+      "",
+    ].join("\n");
+
+    fs.writeFileSync(path.join(tmpDir, "AGENTS.md"), managedAgents, "utf-8");
+
+    await syncCommand({ to: "codex", write: true, syncInstructions: true, prune: true });
+
+    const agentsContent = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+    expect(agentsContent).toContain("# Existing Instructions");
+    expect(agentsContent).toContain("Manual footer.");
+    expect(agentsContent).not.toContain("aisyncer:project-instructions:start");
+  });
+
+  it("syncs project instructions when only windsurf is selected", async () => {
+    writeCanonicalProjectInstructions(tmpDir);
+
+    await syncCommand({ to: "windsurf", write: true, syncInstructions: true });
+
+    const agentsContent = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
+    expect(agentsContent).toContain("Keep changes focused.");
   });
 });

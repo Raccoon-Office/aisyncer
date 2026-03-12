@@ -6,6 +6,13 @@ import { createCodexAdapter } from "../../adapters/codex.js";
 import { createCursorAdapter } from "../../adapters/cursor.js";
 import { createWindsurfAdapter } from "../../adapters/windsurf.js";
 import type { PlatformAdapter } from "../../adapters/base.js";
+import {
+  canonicalProjectInstructionsPath,
+  executeManagedProjectInstructionsSync,
+  loadProjectInstructions,
+  planManagedProjectInstructionsSync,
+  type ProjectInstructions,
+} from "../../core/project-instructions.js";
 import type { SkillSpec, RuleSpec } from "../../core/schema.js";
 import {
   loadCanonicalSkills,
@@ -16,14 +23,22 @@ import {
   executeRuleSync,
 } from "../../core/sync.js";
 import type { ResourceSyncAction } from "../../core/resource.js";
-import { SUPPORTED_PLATFORMS, RULE_SYNC_PLATFORMS } from "./sync.js";
+import {
+  INSTRUCTION_SYNC_PLATFORMS,
+  SUPPORTED_PLATFORMS,
+  RULE_SYNC_PLATFORMS,
+  resolveInstructionTargets,
+} from "./sync.js";
 
 export interface ResourceDetectionResult {
   hasSkills: boolean;
   hasRules: boolean;
+  hasInstructions: boolean;
   skillsCount: number;
   rulesCount: number;
 }
+
+type InteractivePlatform = "claude" | "codex" | "cursor" | "windsurf";
 
 /**
  * Detects available resources in .my-ai directory.
@@ -56,7 +71,10 @@ export function detectAvailableResources(): ResourceDetectionResult {
     }
   }
 
-  return { hasSkills, hasRules, skillsCount, rulesCount };
+  const instructions = loadProjectInstructions(canonicalProjectInstructionsPath(path.resolve(".my-ai")));
+  const hasInstructions = instructions !== null;
+
+  return { hasSkills, hasRules, hasInstructions, skillsCount, rulesCount };
 }
 
 /**
@@ -65,8 +83,8 @@ export function detectAvailableResources(): ResourceDetectionResult {
 export function getAvailableResourceTypes(
   platforms: string[],
   detection: ResourceDetectionResult,
-): Array<{ name: string; value: "skills" | "rules" }> {
-  const types: Array<{ name: string; value: "skills" | "rules" }> = [];
+): Array<{ name: string; value: "skills" | "rules" | "instructions" }> {
+  const types: Array<{ name: string; value: "skills" | "rules" | "instructions" }> = [];
 
   if (detection.hasSkills) {
     types.push({
@@ -81,6 +99,16 @@ export function getAvailableResourceTypes(
       types.push({
         name: `rules (${detection.rulesCount} found)`,
         value: "rules",
+      });
+    }
+  }
+
+  if (detection.hasInstructions) {
+    const hasInstructionTarget = platforms.some((p) => INSTRUCTION_SYNC_PLATFORMS.has(p));
+    if (hasInstructionTarget) {
+      types.push({
+        name: "project instructions (1 found)",
+        value: "instructions",
       });
     }
   }
@@ -169,6 +197,33 @@ function previewPlatformSync(
   return { actions: allActions, hasChanges };
 }
 
+function previewProjectInstructionsSync(
+  platforms: string[],
+  instructions: ProjectInstructions | null,
+  prune: boolean,
+): boolean {
+  const targets = resolveInstructionTargets(toInteractivePlatforms(platforms));
+
+  const actions = targets.flatMap((target) => {
+    const action = planManagedProjectInstructionsSync(instructions, target, { prune });
+    return action ? [action] : [];
+  });
+
+  if (actions.length === 0) {
+    return false;
+  }
+
+  let hasChanges = false;
+  console.log("\nproject instructions:");
+  for (const action of actions) {
+    const label = actionLabel(action.action);
+    console.log(`  ${label} ${action.target.label} → ${action.target.targetPath}`);
+    if (action.action !== "skip") hasChanges = true;
+  }
+
+  return hasChanges;
+}
+
 /**
  * Executes the sync for a given platform.
  */
@@ -191,6 +246,20 @@ function executePlatformSync(
   }
 }
 
+function executeProjectInstructionsSync(
+  platforms: string[],
+  instructions: ProjectInstructions | null,
+  prune: boolean,
+): void {
+  const targets = resolveInstructionTargets(toInteractivePlatforms(platforms));
+
+  for (const target of targets) {
+    const action = planManagedProjectInstructionsSync(instructions, target, { prune });
+    if (!action) continue;
+    executeManagedProjectInstructionsSync(instructions, action);
+  }
+}
+
 /**
  * Main interactive sync flow.
  */
@@ -210,8 +279,8 @@ export async function interactiveSyncFlow(): Promise<void> {
 
   // Step 2: Scan available resources
   const detection = detectAvailableResources();
-  if (!detection.hasSkills && !detection.hasRules) {
-    console.error("No valid skills or rules found in .my-ai. Run 'aisyncer init' first.");
+  if (!detection.hasSkills && !detection.hasRules && !detection.hasInstructions) {
+    console.error("No valid skills, rules, or project instructions found in .my-ai. Run 'aisyncer init' first.");
     process.exit(1);
   }
 
@@ -247,6 +316,7 @@ export async function interactiveSyncFlow(): Promise<void> {
 
   const syncSkills = resourceTypes.includes("skills");
   const syncRules = resourceTypes.includes("rules");
+  const syncInstructions = resourceTypes.includes("instructions");
 
   const prune = await confirm({
     message: "Prune stale generated resources that no longer exist in .my-ai?",
@@ -255,7 +325,7 @@ export async function interactiveSyncFlow(): Promise<void> {
 
   // Step 5: If selected, ask for custom output directories
   let claudeDir: string | undefined;
-  if (platforms.includes("claude")) {
+  if (syncSkills && platforms.includes("claude")) {
     const useCustomDir = await confirm({
       message: "Use custom Claude output directory?",
       default: false,
@@ -276,7 +346,7 @@ export async function interactiveSyncFlow(): Promise<void> {
   }
 
   let codexDir: string | undefined;
-  if (platforms.includes("codex")) {
+  if (syncSkills && platforms.includes("codex")) {
     const useCustomDir = await confirm({
       message: "Use custom Codex output directory?",
       default: false,
@@ -297,7 +367,7 @@ export async function interactiveSyncFlow(): Promise<void> {
   }
 
   let cursorDir: string | undefined;
-  if (platforms.includes("cursor")) {
+  if (syncSkills && platforms.includes("cursor")) {
     const useCustomDir = await confirm({
       message: "Use custom Cursor output directory?",
       default: false,
@@ -324,6 +394,9 @@ export async function interactiveSyncFlow(): Promise<void> {
   const rules = syncRules
     ? loadCanonicalRules(path.resolve(".my-ai", "rules"))
     : [];
+  const projectInstructions = syncInstructions
+    ? loadProjectInstructions(canonicalProjectInstructionsPath(path.resolve(".my-ai")))
+    : null;
 
   // Build adapters once
   const adapters = platforms.map((p) => resolveAdapter(p, claudeDir, codexDir, cursorDir));
@@ -332,8 +405,15 @@ export async function interactiveSyncFlow(): Promise<void> {
   console.log("\n=== Preview Changes ===");
 
   let hasAnyChanges = false;
-  for (const adapter of adapters) {
-    const { hasChanges } = previewPlatformSync(adapter, skills, rules, syncSkills, syncRules, prune);
+  if (syncSkills || syncRules) {
+    for (const adapter of adapters) {
+      const { hasChanges } = previewPlatformSync(adapter, skills, rules, syncSkills, syncRules, prune);
+      if (hasChanges) hasAnyChanges = true;
+    }
+  }
+
+  if (syncInstructions) {
+    const hasChanges = previewProjectInstructionsSync(platforms, projectInstructions, prune);
     if (hasChanges) hasAnyChanges = true;
   }
 
@@ -355,10 +435,23 @@ export async function interactiveSyncFlow(): Promise<void> {
 
   // Execute sync — reuse same adapters and loaded resources
   console.log("\n=== Applying Changes ===");
-  for (const adapter of adapters) {
-    console.log(`\nSyncing to ${adapter.name}...`);
-    executePlatformSync(adapter, skills, rules, syncSkills, syncRules, prune);
+  if (syncSkills || syncRules) {
+    for (const adapter of adapters) {
+      console.log(`\nSyncing to ${adapter.name}...`);
+      executePlatformSync(adapter, skills, rules, syncSkills, syncRules, prune);
+    }
+  }
+
+  if (syncInstructions) {
+    console.log("\nSyncing project instructions...");
+    executeProjectInstructionsSync(platforms, projectInstructions, prune);
   }
 
   console.log("\nSync complete.");
+}
+
+function toInteractivePlatforms(platforms: string[]): InteractivePlatform[] {
+  return platforms.filter((platform): platform is InteractivePlatform =>
+    SUPPORTED_PLATFORMS.includes(platform as InteractivePlatform),
+  );
 }

@@ -1,9 +1,10 @@
 /**
- * Fetch skills and rules from a GitHub repository using the REST API.
+ * Fetch skills, rules, and project instructions from a GitHub repository using the REST API.
  *
  * Expected remote structure:
  *   skills/<id>/SKILL.md   (additional files under skills/<id>/ are preserved)
  *   rules/<id>/RULE.md     (optional)
+ *   instructions/PROJECT.md (optional)
  *
  * Uses the GitHub Contents API. No git clone needed.
  * Supports GITHUB_TOKEN for private repos and rate limits.
@@ -11,6 +12,11 @@
 
 export interface GitHubResourceFile {
   id: string;
+  content: string;
+}
+
+export interface GitHubProjectInstructionsFile {
+  path: string;
   content: string;
 }
 
@@ -30,6 +36,7 @@ export type GitHubSkillFile = GitHubSkillDirectory;
 export interface FetchResult {
   skills: GitHubSkillDirectory[];
   rules: GitHubResourceFile[];
+  projectInstructions: GitHubProjectInstructionsFile | null;
   errors: string[];
 }
 
@@ -136,11 +143,11 @@ async function fetchBlobs(
 }
 
 /**
- * Fetch all skills and rules from a GitHub repo.
+ * Fetch all skills, rules, and project instructions from a GitHub repo.
  *
  * Strategy:
  * 1. GET the default branch's tree recursively.
- * 2. Filter for paths matching skills/<id>/** and rules/<id>/RULE.md.
+ * 2. Filter for paths matching skills/<id>/**, rules/<id>/RULE.md, and instructions/PROJECT.md.
  * 3. GET each blob to retrieve file content.
  */
 export async function fetchFromGitHub(
@@ -188,9 +195,10 @@ export async function fetchFromGitHub(
     errors.push("Warning: Repository tree was truncated. Some resources may be missing.");
   }
 
-  // Find skills/<id>/** and rules/<id>/RULE.md blobs
+  // Find skills/<id>/**, rules/<id>/RULE.md, and instructions/PROJECT.md blobs
   const skillPattern = /^skills\/([a-z0-9-]+)\/(.+)$/;
   const rulePattern = /^rules\/([a-z0-9-]+)\/RULE\.md$/;
+  const projectInstructionsPath = "instructions/PROJECT.md";
 
   const skillBlobs = tree.tree.filter(
     (item) => item.type === "blob" && skillPattern.test(item.path),
@@ -198,19 +206,25 @@ export async function fetchFromGitHub(
   const ruleBlobs = tree.tree.filter(
     (item) => item.type === "blob" && rulePattern.test(item.path),
   );
+  const projectInstructionsBlob = tree.tree.find(
+    (item) => item.type === "blob" && item.path === projectInstructionsPath,
+  );
 
-  if (skillBlobs.length === 0 && ruleBlobs.length === 0) {
+  if (skillBlobs.length === 0 && ruleBlobs.length === 0 && !projectInstructionsBlob) {
     errors.push(
-      `No skills or rules found in ${owner}/${repo}. Expected structure: skills/<id>/SKILL.md (plus optional companion files) and/or rules/<id>/RULE.md`,
+      `No skills, rules, or project instructions found in ${owner}/${repo}. Expected structure: skills/<id>/SKILL.md (plus optional companion files), rules/<id>/RULE.md, and/or instructions/PROJECT.md`,
     );
-    return { skills: [], rules: [], errors };
+    return { skills: [], rules: [], projectInstructions: null, errors };
   }
 
   // Fetch blobs
   const skillResult = await fetchBlobs(skillBlobs, token);
   const ruleResult = await fetchBlobs(ruleBlobs, token);
+  const projectInstructionsResult = projectInstructionsBlob
+    ? await fetchBlobs([projectInstructionsBlob], token)
+    : { files: [], errors: [] };
 
-  errors.push(...skillResult.errors, ...ruleResult.errors);
+  errors.push(...skillResult.errors, ...ruleResult.errors, ...projectInstructionsResult.errors);
 
   const skillsById = new Map<string, GitHubSkillEntry[]>();
   for (const file of skillResult.files) {
@@ -241,7 +255,11 @@ export async function fetchFromGitHub(
     return [{ id: match[1], content: file.content }];
   });
 
-  return { skills, rules, errors };
+  const projectInstructions = projectInstructionsResult.files.find(
+    (file) => file.path === projectInstructionsPath,
+  ) ?? null;
+
+  return { skills, rules, projectInstructions, errors };
 }
 
 /** @deprecated Use fetchFromGitHub instead */

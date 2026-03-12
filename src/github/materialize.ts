@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parseSkill, parseRule } from "../core/parser.js";
+import {
+  emitProjectInstructions,
+  parseProjectInstructions,
+} from "../core/project-instructions.js";
 import { validateSkill, validateRule } from "../core/schema.js";
 import type { SkillSpec, RuleSpec } from "../core/schema.js";
 import type { FetchResult } from "./fetch.js";
@@ -8,6 +12,7 @@ import type { FetchResult } from "./fetch.js";
 export interface MaterializeResult {
   skillsWritten: number;
   rulesWritten: number;
+  projectInstructionsWritten: boolean;
   writtenSkillIds: string[];
   writtenRuleIds: string[];
   validationErrors: string[];
@@ -19,8 +24,10 @@ export function materializeFetchedResources(
 ): MaterializeResult {
   const skillsDir = path.join(baseDir, "skills");
   const rulesDir = path.join(baseDir, "rules");
+  const instructionsDir = path.join(baseDir, "instructions");
   let skillsWritten = 0;
   let rulesWritten = 0;
+  let projectInstructionsWritten = false;
   const writtenSkillIds: string[] = [];
   const writtenRuleIds: string[] = [];
   const validationErrors: string[] = [];
@@ -94,9 +101,25 @@ export function materializeFetchedResources(
     writtenRuleIds.push(validation.data.id);
   }
 
+  if (result.projectInstructions) {
+    const parsed = parseProjectInstructions(result.projectInstructions.content);
+    if (parsed.content.length === 0) {
+      validationErrors.push("project instructions: content is required");
+    } else {
+      fs.mkdirSync(instructionsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(instructionsDir, "PROJECT.md"),
+        emitProjectInstructions(parsed),
+        "utf-8",
+      );
+      projectInstructionsWritten = true;
+    }
+  }
+
   return {
     skillsWritten,
     rulesWritten,
+    projectInstructionsWritten,
     writtenSkillIds,
     writtenRuleIds,
     validationErrors,

@@ -2,6 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createAdapter } from "../../adapters/base.js";
+import {
+  canonicalProjectInstructionsPath,
+  executeCanonicalProjectInstructionsSync,
+  loadProjectInstructions,
+  planCanonicalProjectInstructionsSync,
+  type ProjectInstructionsSyncAction,
+} from "../../core/project-instructions.js";
 import { loadCanonicalRules, loadCanonicalSkills, planRuleSync, planSync, executeRuleSync, executeSync } from "../../core/sync.js";
 import type { ResourceSyncAction } from "../../core/resource.js";
 import { fetchFromGitHub } from "../../github/fetch.js";
@@ -10,6 +17,7 @@ import { materializeFetchedResources } from "../../github/materialize.js";
 export interface RemoteSyncOptions {
   from: string;
   withRules?: boolean;
+  withInstructions?: boolean;
   write?: boolean;
   prune?: boolean;
 }
@@ -19,6 +27,7 @@ type RemoteSyncMode = "pull" | "diff";
 export async function runRemoteSync(mode: RemoteSyncMode, options: RemoteSyncOptions): Promise<void> {
   const token = process.env.GITHUB_TOKEN;
   const includeRules = options.withRules ?? false;
+  const includeInstructions = options.withInstructions ?? false;
   const dryRun = mode === "diff" || !options.write;
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aisyncer-remote-"));
 
@@ -44,6 +53,7 @@ export async function runRemoteSync(mode: RemoteSyncMode, options: RemoteSyncOpt
     const filteredResult = {
       skills: result.skills,
       rules: includeRules ? result.rules : [],
+      projectInstructions: includeInstructions ? result.projectInstructions : null,
       errors: result.errors,
     };
 
@@ -59,8 +69,11 @@ export async function runRemoteSync(mode: RemoteSyncMode, options: RemoteSyncOpt
     const rules = includeRules
       ? loadCanonicalRules(path.join(tempDir, "rules"))
       : [];
+    const projectInstructions = includeInstructions
+      ? loadProjectInstructions(path.join(tempDir, "instructions", "PROJECT.md"))
+      : null;
 
-    if (skills.length === 0 && rules.length === 0) {
+    if (skills.length === 0 && rules.length === 0 && !projectInstructions && !(includeInstructions && options.prune)) {
       console.error("No valid remote resources were found.");
       process.exit(1);
     }
@@ -92,6 +105,27 @@ export async function runRemoteSync(mode: RemoteSyncMode, options: RemoteSyncOpt
       console.log();
     }
 
+    if (includeInstructions) {
+      const action = planCanonicalProjectInstructionsSync(
+        projectInstructions,
+        {
+          key: "canonical",
+          label: "project instructions",
+          targetPath: canonicalProjectInstructionsPath(path.resolve(".my-ai")),
+        },
+        { prune: options.prune },
+      );
+
+      if (action) {
+        console.log("Comparing project instructions...");
+        hasChanges = printProjectInstructionsAction(action) || hasChanges;
+        if (!dryRun) {
+          executeCanonicalProjectInstructionsSync(projectInstructions, action);
+        }
+        console.log();
+      }
+    }
+
     if (!hasChanges) {
       console.log("Everything is up to date.");
       return;
@@ -101,7 +135,7 @@ export async function runRemoteSync(mode: RemoteSyncMode, options: RemoteSyncOpt
       if (mode === "pull") {
         console.log("Run with --write to apply these changes.");
       } else {
-        console.log(`Run 'aisyncer pull --from ${options.from}${includeRules ? " --with-rules" : ""}${options.prune ? " --prune" : ""} --write' to apply these changes.`);
+        console.log(`Run 'aisyncer pull --from ${options.from}${includeRules ? " --with-rules" : ""}${includeInstructions ? " --with-instructions" : ""}${options.prune ? " --prune" : ""} --write' to apply these changes.`);
       }
       return;
     }
@@ -110,6 +144,12 @@ export async function runRemoteSync(mode: RemoteSyncMode, options: RemoteSyncOpt
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+function printProjectInstructionsAction(action: ProjectInstructionsSyncAction): boolean {
+  const label = actionLabel(action.action);
+  console.log(`  ${label} ${action.target.label} → ${action.target.targetPath}`);
+  return action.action !== "skip";
 }
 
 function printActions(actions: ResourceSyncAction[]): boolean {

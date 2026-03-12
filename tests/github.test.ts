@@ -103,6 +103,7 @@ describe("fetchFromGitHub", () => {
             { path: "skills/code-review/references/checklist.md", type: "blob", url: "https://api.github.com/blob/reference" },
             { path: "skills/code-review/scripts/review.sh", type: "blob", url: "https://api.github.com/blob/script" },
             { path: "rules/default/RULE.md", type: "blob", url: "https://api.github.com/blob/rule" },
+            { path: "instructions/PROJECT.md", type: "blob", url: "https://api.github.com/blob/instructions" },
           ],
         }),
       ],
@@ -121,6 +122,10 @@ describe("fetchFromGitHub", () => {
       [
         "https://api.github.com/blob/rule",
         jsonResponse(encodedBlob("---\nschemaVersion: 1\nid: default\nname: Default Rule\ndescription: Rule\n---\n\n# Rule\n")),
+      ],
+      [
+        "https://api.github.com/blob/instructions",
+        jsonResponse(encodedBlob("# Project Instructions\n\n- Keep it concise.\n")),
       ],
     ]);
 
@@ -151,6 +156,10 @@ describe("fetchFromGitHub", () => {
         content: "---\nschemaVersion: 1\nid: default\nname: Default Rule\ndescription: Rule\n---\n\n# Rule\n",
       },
     ]);
+    expect(result.projectInstructions).toEqual({
+      path: "instructions/PROJECT.md",
+      content: "# Project Instructions\n\n- Keep it concise.\n",
+    });
   });
 });
 

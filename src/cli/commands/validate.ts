@@ -1,8 +1,12 @@
 import path from "node:path";
 import { validateSkillsDir, validateRulesDir } from "../../core/validator.js";
-import type { ValidationResult } from "../../core/validator.js";
+import {
+  canonicalProjectInstructionsPath,
+  validateProjectInstructionsFile,
+} from "../../core/project-instructions.js";
+import type { ValidationResult } from "../../core/resource.js";
 
-export async function validateCommand(options: { withRules?: boolean }): Promise<void> {
+export async function validateCommand(options: { withRules?: boolean; withInstructions?: boolean }): Promise<void> {
   const skillsDir = path.resolve(".my-ai", "skills");
   const allResults: ValidationResult[] = [];
 
@@ -34,6 +38,26 @@ export async function validateCommand(options: { withRules?: boolean }): Promise
       console.log("All rules are valid.\n");
     } else {
       for (const result of ruleResults) {
+        console.error(`[ERROR] ${result.file}`);
+        for (const error of result.errors) {
+          console.error(`  - ${error}`);
+        }
+        console.error();
+      }
+    }
+  }
+
+  if (options.withInstructions) {
+    const instructionsFile = canonicalProjectInstructionsPath(path.resolve(".my-ai"));
+    console.log(`Validating project instructions in ${instructionsFile}...\n`);
+
+    const instructionResults = validateProjectInstructionsFile(instructionsFile);
+    allResults.push(...instructionResults);
+
+    if (instructionResults.length === 0) {
+      console.log("Project instructions are valid.\n");
+    } else {
+      for (const result of instructionResults) {
         console.error(`[ERROR] ${result.file}`);
         for (const error of result.errors) {
           console.error(`  - ${error}`);
