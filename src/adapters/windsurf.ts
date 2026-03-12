@@ -29,6 +29,20 @@ export function createWindsurfAdapter(windsurfDir?: string): PlatformAdapter {
       return base.resourcePath(id, config);
     },
 
+    listResourceIds<T extends { id: string; content: string }>(config: ResourceConfig<T>): string[] {
+      if (config.name !== "rule") {
+        return base.listResourceIds(config);
+      }
+
+      const rulesDir = path.join(baseDir, "rules");
+      if (!fs.existsSync(rulesDir)) return [];
+
+      return fs.readdirSync(rulesDir, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+        .map((entry) => entry.name.slice(0, -3))
+        .sort();
+    },
+
     readResource<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): T | null {
       if (config.name !== "rule") {
         return base.readResource(id, config);
@@ -56,6 +70,15 @@ export function createWindsurfAdapter(windsurfDir?: string): PlatformAdapter {
       const filePath = windsurfRulePath(item.id);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, emitResource(item), "utf-8");
+    },
+
+    deleteResource<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): void {
+      if (config.name !== "rule") {
+        base.deleteResource(id, config);
+        return;
+      }
+
+      fs.rmSync(windsurfRulePath(id), { force: true });
     },
   };
 }

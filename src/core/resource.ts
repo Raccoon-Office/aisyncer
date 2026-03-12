@@ -26,7 +26,7 @@ export interface ValidationResult {
 
 export interface ResourceSyncAction {
   id: string;
-  action: "add" | "skip" | "overwrite";
+  action: "add" | "skip" | "overwrite" | "delete";
   targetPath: string;
 }
 
@@ -140,16 +140,38 @@ export function executeResourceSync<T extends ResourceWithId>(
   items: T[],
   actions: ResourceSyncAction[],
   writeFn: (item: T) => void,
+  deleteFn?: (id: string) => void,
 ): void {
   const itemMap = new Map(items.map((i) => [i.id, i]));
 
   for (const action of actions) {
     if (action.action === "skip") continue;
+    if (action.action === "delete") {
+      deleteFn?.(action.id);
+      continue;
+    }
     const item = itemMap.get(action.id);
     if (item) {
       writeFn(item);
     }
   }
+}
+
+export function planResourcePrune(
+  canonicalIds: string[],
+  existingIds: string[],
+  pathFn: (id: string) => string,
+): ResourceSyncAction[] {
+  const canonicalIdSet = new Set(canonicalIds);
+
+  return existingIds
+    .filter((id) => !canonicalIdSet.has(id))
+    .sort()
+    .map((id) => ({
+      id,
+      action: "delete" as const,
+      targetPath: pathFn(id),
+    }));
 }
 
 // -- Validate directory --

@@ -96,6 +96,8 @@ function actionLabel(action: string): string {
       return "[SKIP]     ";
     case "overwrite":
       return "[OVERWRITE]";
+    case "delete":
+      return "[DELETE]   ";
     default:
       return `[${action.toUpperCase()}]`;
   }
@@ -133,6 +135,7 @@ function previewPlatformSync(
   rules: RuleSpec[],
   syncSkills: boolean,
   syncRules: boolean,
+  prune: boolean,
 ): { actions: ResourceSyncAction[]; hasChanges: boolean } {
   const allActions: ResourceSyncAction[] = [];
   let hasChanges = false;
@@ -140,7 +143,7 @@ function previewPlatformSync(
   console.log(`\n${adapter.name}:`);
 
   if (syncSkills && skills.length > 0) {
-    const actions = planSync(skills, adapter);
+    const actions = planSync(skills, adapter, { prune });
     for (const action of actions) {
       const label = actionLabel(action.action);
       console.log(`  ${label} ${action.id} → ${action.targetPath}`);
@@ -151,7 +154,7 @@ function previewPlatformSync(
 
   if (syncRules && RULE_SYNC_PLATFORMS.has(adapter.name)) {
     if (rules.length > 0) {
-      const actions = planRuleSync(rules, adapter);
+      const actions = planRuleSync(rules, adapter, { prune });
       for (const action of actions) {
         const label = actionLabel(action.action);
         console.log(`  ${label} ${action.id} → ${action.targetPath}`);
@@ -175,14 +178,15 @@ function executePlatformSync(
   rules: RuleSpec[],
   syncSkills: boolean,
   syncRules: boolean,
+  prune: boolean,
 ): void {
   if (syncSkills && skills.length > 0) {
-    const actions = planSync(skills, adapter);
+    const actions = planSync(skills, adapter, { prune });
     executeSync(skills, actions, adapter);
   }
 
   if (syncRules && RULE_SYNC_PLATFORMS.has(adapter.name) && rules.length > 0) {
-    const actions = planRuleSync(rules, adapter);
+    const actions = planRuleSync(rules, adapter, { prune });
     executeRuleSync(rules, actions, adapter);
   }
 }
@@ -243,6 +247,11 @@ export async function interactiveSyncFlow(): Promise<void> {
 
   const syncSkills = resourceTypes.includes("skills");
   const syncRules = resourceTypes.includes("rules");
+
+  const prune = await confirm({
+    message: "Prune stale generated resources that no longer exist in .my-ai?",
+    default: false,
+  });
 
   // Step 5: If selected, ask for custom output directories
   let claudeDir: string | undefined;
@@ -324,7 +333,7 @@ export async function interactiveSyncFlow(): Promise<void> {
 
   let hasAnyChanges = false;
   for (const adapter of adapters) {
-    const { hasChanges } = previewPlatformSync(adapter, skills, rules, syncSkills, syncRules);
+    const { hasChanges } = previewPlatformSync(adapter, skills, rules, syncSkills, syncRules, prune);
     if (hasChanges) hasAnyChanges = true;
   }
 
@@ -348,7 +357,7 @@ export async function interactiveSyncFlow(): Promise<void> {
   console.log("\n=== Applying Changes ===");
   for (const adapter of adapters) {
     console.log(`\nSyncing to ${adapter.name}...`);
-    executePlatformSync(adapter, skills, rules, syncSkills, syncRules);
+    executePlatformSync(adapter, skills, rules, syncSkills, syncRules, prune);
   }
 
   console.log("\nSync complete.");

@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { emitSkill, emitRule, parseSkill, parseRule } from "../../core/parser.js";
-import { validateSkill, validateRule } from "../../core/schema.js";
+import { emitSkill, emitRule } from "../../core/parser.js";
 import type { SkillSpec, RuleSpec } from "../../core/schema.js";
 import { fetchFromGitHub } from "../../github/fetch.js";
+import { materializeFetchedResources } from "../../github/materialize.js";
 
 const EXAMPLE_SKILL: SkillSpec = {
   schemaVersion: 1,
@@ -90,7 +90,7 @@ function initLocal(skillsDir: string, withRules: boolean): void {
 
 async function initFromGitHub(source: string, skillsDir: string): Promise<void> {
   const token = process.env.GITHUB_TOKEN;
-  const rulesDir = path.join(path.dirname(skillsDir), "rules");
+  const baseDir = path.dirname(skillsDir);
 
   console.log(`Fetching resources from ${source}...`);
   if (token) {
@@ -115,85 +115,20 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
     process.exit(1);
   }
 
-  let skillsWritten = 0;
-  let rulesWritten = 0;
-  const validationErrors: string[] = [];
+  const {
+    skillsWritten,
+    rulesWritten,
+    writtenSkillIds,
+    writtenRuleIds,
+    validationErrors,
+  } = materializeFetchedResources(result, baseDir);
 
-  // Write skills
-  for (const remote of result.skills) {
-    const entryFile = remote.files.find((file) => file.path === "SKILL.md");
-    if (!entryFile) {
-      validationErrors.push(`skill ${remote.id}: SKILL.md not found`);
-      continue;
-    }
-
-    let skill: SkillSpec;
-    try {
-      skill = parseSkill(entryFile.content);
-    } catch {
-      validationErrors.push(`skill ${remote.id}: Failed to parse frontmatter`);
-      continue;
-    }
-
-    const validation = validateSkill(skill);
-    if (!validation.success) {
-      validationErrors.push(
-        `skill ${remote.id}: ${validation.errors.join("; ")}`,
-      );
-      continue;
-    }
-
-    const dir = path.join(skillsDir, validation.data.id);
-    const targetFiles: Array<{ path: string; content: string }> = [];
-
-    let hasInvalidPath = false;
-    for (const file of remote.files) {
-      const targetPath = resolveResourcePath(dir, file.path);
-      if (!targetPath) {
-        validationErrors.push(`skill ${remote.id}: Invalid file path "${file.path}"`);
-        hasInvalidPath = true;
-        break;
-      }
-
-      targetFiles.push({ path: targetPath, content: file.content });
-    }
-
-    if (hasInvalidPath) {
-      continue;
-    }
-
-    for (const file of targetFiles) {
-      fs.mkdirSync(path.dirname(file.path), { recursive: true });
-      fs.writeFileSync(file.path, file.content, "utf-8");
-    }
-
-    skillsWritten++;
-    console.log(`  + skill: ${validation.data.id}`);
+  for (const id of writtenSkillIds) {
+    console.log(`  + skill: ${id}`);
   }
 
-  // Write rules
-  for (const remote of result.rules) {
-    let rule: RuleSpec;
-    try {
-      rule = parseRule(remote.content);
-    } catch {
-      validationErrors.push(`rule ${remote.id}: Failed to parse frontmatter`);
-      continue;
-    }
-
-    const validation = validateRule(rule);
-    if (!validation.success) {
-      validationErrors.push(
-        `rule ${remote.id}: ${validation.errors.join("; ")}`,
-      );
-      continue;
-    }
-
-    const dir = path.join(rulesDir, validation.data.id);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "RULE.md"), remote.content, "utf-8");
-    rulesWritten++;
-    console.log(`  + rule: ${validation.data.id}`);
+  for (const id of writtenRuleIds) {
+    console.log(`  + rule: ${id}`);
   }
 
   if (validationErrors.length > 0) {
@@ -211,23 +146,4 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
     fs.rmSync(path.resolve(".my-ai"), { recursive: true, force: true });
     process.exit(1);
   }
-}
-
-function resolveResourcePath(baseDir: string, relativePath: string): string | null {
-  if (relativePath.length === 0 || path.isAbsolute(relativePath)) {
-    return null;
-  }
-
-  const segments = relativePath.split(/[\\/]+/);
-  if (segments.includes("..")) {
-    return null;
-  }
-
-  const resolvedBase = path.resolve(baseDir);
-  const resolvedPath = path.resolve(resolvedBase, relativePath);
-  if (resolvedPath.startsWith(`${resolvedBase}${path.sep}`)) {
-    return resolvedPath;
-  }
-
-  return null;
 }

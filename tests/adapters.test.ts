@@ -95,6 +95,23 @@ describe("createAdapter", () => {
     const p = adapter.resourcePath("my-rule", ruleConfig);
     expect(p).toBe(path.join(tmpDir, "rules", "my-rule", "RULE.md"));
   });
+
+  it("lists resource ids for directory-based resources", () => {
+    const adapter = createAdapter("test", tmpDir);
+    adapter.writeResource(SAMPLE_SKILL, skillConfig);
+    adapter.writeResource(SAMPLE_RULE, ruleConfig);
+
+    expect(adapter.listResourceIds(skillConfig)).toEqual([SAMPLE_SKILL.id]);
+    expect(adapter.listResourceIds(ruleConfig)).toEqual([SAMPLE_RULE.id]);
+  });
+
+  it("deletes directory-based resources", () => {
+    const adapter = createAdapter("test", tmpDir);
+    adapter.writeResource(SAMPLE_SKILL, skillConfig);
+    adapter.deleteResource(SAMPLE_SKILL.id, skillConfig);
+
+    expect(fs.existsSync(path.join(tmpDir, "skills", SAMPLE_SKILL.id))).toBe(false);
+  });
 });
 
 describe("createClaudeAdapter", () => {
@@ -181,6 +198,16 @@ describe("createWindsurfAdapter", () => {
     const adapter = createWindsurfAdapter(tmpDir);
     const p = adapter.resourcePath("my-rule", ruleConfig);
     expect(p).toBe(path.join(tmpDir, "rules", "my-rule.md"));
+  });
+
+  it("lists and deletes flat rules for windsurf", () => {
+    const adapter = createWindsurfAdapter(tmpDir);
+    adapter.writeResource(SAMPLE_RULE, ruleConfig);
+
+    expect(adapter.listResourceIds(ruleConfig)).toEqual([SAMPLE_RULE.id]);
+
+    adapter.deleteResource(SAMPLE_RULE.id, ruleConfig);
+    expect(fs.existsSync(path.join(tmpDir, "rules", `${SAMPLE_RULE.id}.md`))).toBe(false);
   });
 });
 

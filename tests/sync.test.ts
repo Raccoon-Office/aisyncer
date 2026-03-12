@@ -214,6 +214,19 @@ describe("planSync", () => {
     expect(actions[0].action).toBe("overwrite");
   });
 
+  it("plans DELETE for stale target skills when prune is enabled", () => {
+    writeCanonicalSkill(canonicalDir, SKILL_A);
+    const canonicalSkill = loadCanonicalSkill(canonicalDir, SKILL_A.id);
+
+    const adapter = createAdapter("test", targetDir);
+    adapter.writeResource(SKILL_A, skillConfig);
+    adapter.writeResource(SKILL_B, skillConfig);
+
+    const actions = planSync([canonicalSkill], adapter, { prune: true });
+    const deleteAction = actions.find((action) => action.id === SKILL_B.id);
+    expect(deleteAction?.action).toBe("delete");
+  });
+
   it("handles multiple skills with mixed actions", () => {
     const adapter = createAdapter("test", targetDir);
     adapter.writeResource(SKILL_A, skillConfig);
@@ -322,5 +335,20 @@ describe("executeSync", () => {
     expect(fs.existsSync(copiedScript)).toBe(true);
     expect(fs.readFileSync(copiedReference, "utf-8")).toBe("Review checklist");
     expect(fs.existsSync(stalePath)).toBe(false);
+  });
+
+  it("deletes stale target skills when prune is enabled", () => {
+    writeCanonicalSkill(canonicalDir, SKILL_A);
+    const canonicalSkill = loadCanonicalSkill(canonicalDir, SKILL_A.id);
+
+    const adapter = createAdapter("test", targetDir);
+    adapter.writeResource(SKILL_A, skillConfig);
+    adapter.writeResource(SKILL_B, skillConfig);
+
+    const actions = planSync([canonicalSkill], adapter, { prune: true });
+    executeSync([canonicalSkill], actions, adapter);
+
+    expect(fs.existsSync(path.join(targetDir, "skills", SKILL_A.id))).toBe(true);
+    expect(fs.existsSync(path.join(targetDir, "skills", SKILL_B.id))).toBe(false);
   });
 });

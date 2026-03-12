@@ -339,6 +339,16 @@ describe("planRuleSync", () => {
     expect(actions).toHaveLength(1);
     expect(actions[0].action).toBe("add");
   });
+
+  it("plans DELETE for stale target rules when prune is enabled", () => {
+    const adapter = createAdapter("test", targetDir);
+    adapter.writeResource(RULE_A, ruleConfig);
+    adapter.writeResource(RULE_B, ruleConfig);
+
+    const actions = planRuleSync([RULE_A], adapter, { prune: true });
+    const deleteAction = actions.find((action) => action.id === RULE_B.id);
+    expect(deleteAction?.action).toBe("delete");
+  });
 });
 
 describe("executeRuleSync", () => {
@@ -373,6 +383,18 @@ describe("executeRuleSync", () => {
     executeRuleSync([RULE_A], actions, adapter);
     const mtimeAfter = fs.statSync(filePath).mtimeMs;
     expect(mtimeAfter).toBe(mtimeBefore);
+  });
+
+  it("deletes stale target rules when prune is enabled", () => {
+    const adapter = createAdapter("test", targetDir);
+    adapter.writeResource(RULE_A, ruleConfig);
+    adapter.writeResource(RULE_B, ruleConfig);
+
+    const actions = planRuleSync([RULE_A], adapter, { prune: true });
+    executeRuleSync([RULE_A], actions, adapter);
+
+    expect(fs.existsSync(path.join(targetDir, "rules", RULE_A.id))).toBe(true);
+    expect(fs.existsSync(path.join(targetDir, "rules", RULE_B.id))).toBe(false);
   });
 });
 
