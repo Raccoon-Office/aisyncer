@@ -9,10 +9,14 @@ export interface PlatformAdapter {
   resourceDirPath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string;
   /** Resolve the output path for a given resource id */
   resourcePath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string;
+  /** List resource ids currently present in the target */
+  listResourceIds<T extends { id: string; content: string }>(config: ResourceConfig<T>): string[];
   /** Read an existing resource, or null if not found / corrupt */
   readResource<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): T | null;
   /** Write a resource to the platform directory */
   writeResource<T extends { id: string; content: string }>(item: T, config: ResourceConfig<T>): void;
+  /** Delete a resource from the platform directory */
+  deleteResource<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): void;
 }
 
 export function createAdapter(name: string, baseDir: string): PlatformAdapter {
@@ -25,6 +29,17 @@ export function createAdapter(name: string, baseDir: string): PlatformAdapter {
 
     resourcePath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string {
       return path.join(baseDir, config.dirName, id, config.fileName);
+    },
+
+    listResourceIds<T extends { id: string; content: string }>(config: ResourceConfig<T>): string[] {
+      const resourceRoot = path.join(baseDir, config.dirName);
+      if (!fs.existsSync(resourceRoot)) return [];
+
+      return fs.readdirSync(resourceRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .filter((entry) => fs.existsSync(path.join(resourceRoot, entry.name, config.fileName)))
+        .map((entry) => entry.name)
+        .sort();
     },
 
     readResource<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): T | null {
@@ -44,6 +59,10 @@ export function createAdapter(name: string, baseDir: string): PlatformAdapter {
       const dir = path.join(baseDir, config.dirName, item.id);
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, config.fileName), emitResource(item), "utf-8");
+    },
+
+    deleteResource<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): void {
+      fs.rmSync(path.join(baseDir, config.dirName, id), { recursive: true, force: true });
     },
   };
 }

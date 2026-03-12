@@ -62,6 +62,12 @@ aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
 # 5) 实际写入
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
+
+# 6) 对比本地 .my-ai 与 GitHub 仓库
+aisyncer diff --from github:my-org/ai-config
+
+# 7) 从 GitHub 仓库更新本地 .my-ai
+aisyncer pull --from github:my-org/ai-config --write
 ```
 
 > `--sync-rules` 只会同步到 Windsurf。Claude、Codex 和 Cursor 目标会显示 skip 提示。
@@ -145,9 +151,10 @@ aisyncer sync
 2. 扫描可用的 skills 和 rules
 3. 让你选择目标平台（claude、codex、cursor、windsurf）
 4. 让你选择资源类型（skills、rules — 根据平台支持情况过滤）
-5. 可选：自定义 Claude、Codex 或 Cursor 输出目录
-6. 预览所有变更（ADD / SKIP / OVERWRITE）
-7. 确认后写入
+5. 询问是否清理已不存在于 `.my-ai` 的派生资源
+6. 可选：自定义 Claude、Codex 或 Cursor 输出目录
+7. 预览所有变更（ADD / SKIP / OVERWRITE / DELETE）
+8. 确认后写入
 
 这是最简单的同步方式 — 不需要记任何参数。
 
@@ -166,6 +173,9 @@ aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
 # 实际写入
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
+
+# 同步时顺便删除目标端已经陈旧的派生资源
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --prune --write
 
 # 自定义 Claude 输出目录
 aisyncer sync --to claude --claude-dir ./custom-path --write
@@ -189,6 +199,7 @@ skill 同步行为：
 - `SKILL.md` 是 skill 入口文件
 - `aisyncer` 会镜像整个 `skills/<id>/` 目录，而不是只写 `SKILL.md`
 - 如果目标目录里有陈旧的派生文件，覆盖时会一并清理
+- 如果启用 `--prune`，已经不在规范源里的整个派生资源也会被删除
 
 输出目录：
 
@@ -196,6 +207,35 @@ skill 同步行为：
 - Codex：默认写入 `.agents/skills/<id>/SKILL.md`；如需用户级或管理员级位置，可用 `--codex-dir ~/.agents` 或 `--codex-dir /etc/codex`
 - Cursor：默认写入 `.cursor/skills/<id>/SKILL.md`；可通过 `--cursor-dir` 覆盖根目录
 - Windsurf：`.windsurf/skills/<id>/SKILL.md` 与 `.windsurf/rules/<id>.md`
+
+### `aisyncer pull`
+
+从 GitHub 仓库拉取资源，并更新本地 `.my-ai/`。
+
+```bash
+# 只预览，不写入
+aisyncer pull --from github:my-org/ai-config
+
+# 拉取 skills 和 rules
+aisyncer pull --from github:my-org/ai-config --with-rules --write
+
+# 同时删除远端已不存在的本地资源
+aisyncer pull --from github:my-org/ai-config --with-rules --prune --write
+```
+
+`pull` 与 `sync` 使用同一套规划语义：`ADD`、`SKIP`、`OVERWRITE`，以及启用 `--prune` 时的 `DELETE`。
+
+### `aisyncer diff`
+
+对比本地 `.my-ai/` 与 GitHub 仓库之间的差异，但不写入任何文件。
+
+```bash
+aisyncer diff --from github:my-org/ai-config
+aisyncer diff --from github:my-org/ai-config --with-rules
+aisyncer diff --from github:my-org/ai-config --with-rules --prune
+```
+
+`diff` 可以理解为 `pull` 的 dry-run，用来在真正更新前先看清楚会发生什么。
 
 ## Skill / Rule 文件格式
 

@@ -25,7 +25,7 @@ CLI tool for syncing AI skills, rules, and configs across Claude, Codex, Cursor,
 - One format, one source of truth
 - One-way sync — platform dirs are always derived, never edited
 - Dry-run by default — see what would happen before writing anything
-- Pull skills from any GitHub repo
+- Pull or diff resources from any GitHub repo
 
 ## Install
 
@@ -61,11 +61,17 @@ aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
 # 5. Apply — actually write to platform directories
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
+
+# 6. Compare local .my-ai against a GitHub repo
+aisyncer diff --from github:my-org/ai-config
+
+# 7. Update local .my-ai from a GitHub repo
+aisyncer pull --from github:my-org/ai-config --write
 ```
 
 > `--sync-rules` writes rules to Windsurf only. Claude, Codex, and Cursor targets print a skip note for rules.
 
-That's it. Skills and rules, four commands, no config files, no databases.
+That's it. Skills and rules, five commands, no config files, no databases.
 
 ## Commands
 
@@ -150,9 +156,10 @@ The interactive flow will:
 2. Scan for available skills and rules
 3. Prompt you to select target platforms (claude, codex, cursor, windsurf)
 4. Prompt you to select resource types (skills, rules — filtered by platform support)
-5. Optionally ask for a custom Claude, Codex, or Cursor output directory
-6. Preview all changes (ADD / SKIP / OVERWRITE)
-7. Ask for confirmation before writing
+5. Ask whether stale generated resources should be pruned
+6. Optionally ask for a custom Claude, Codex, or Cursor output directory
+7. Preview all changes (ADD / SKIP / OVERWRITE / DELETE)
+8. Ask for confirmation before writing
 
 This is the easiest way to sync — no flags to remember.
 
@@ -171,6 +178,9 @@ aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
 # Actually write files
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
+
+# Also delete generated resources that are no longer present in .my-ai
+aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --prune --write
 
 # Custom output directory for Claude
 aisyncer sync --to claude --claude-dir ./custom-path --write
@@ -195,8 +205,9 @@ Sync logic per resource:
 | Target does not exist | **ADD** — write the canonical file or directory |
 | Target exists, hash matches | **SKIP** — no changes needed |
 | Target exists, hash differs | **OVERWRITE** — replace with the canonical version |
+| Target exists only locally and `--prune` is enabled | **DELETE** — remove the stale generated resource |
 
-For skills, `SKILL.md` remains the entry point, but `aisyncer` mirrors the entire `skills/<id>/` directory. Companion files such as `references/`, `scripts/`, or templates are copied to every platform target and stale generated files are removed on overwrite.
+For skills, `SKILL.md` remains the entry point, but `aisyncer` mirrors the entire `skills/<id>/` directory. Companion files such as `references/`, `scripts/`, or templates are copied to every platform target and stale generated files are removed on overwrite. With `--prune`, whole stale resources are deleted too.
 
 The hash covers `name`, `description`, `allowedTools`, `metadata`, and `content` for single-file comparisons, and full skill directory snapshots when syncing canonical skill folders.
 
@@ -205,6 +216,35 @@ Output directories:
 - Codex: `.agents/skills/<id>/SKILL.md` by default; you can also target user/admin locations with `--codex-dir` such as `~/.agents` or `/etc/codex`
 - Cursor: `.cursor/skills/<id>/SKILL.md` by default; you can override the root with `--cursor-dir`
 - Windsurf: `.windsurf/skills/<id>/SKILL.md`, `.windsurf/rules/<id>.md`
+
+### `aisyncer pull`
+
+Fetch resources from a GitHub repository and update your local `.my-ai/` directory.
+
+```bash
+# Preview changes only
+aisyncer pull --from github:my-org/ai-config
+
+# Pull skills and rules
+aisyncer pull --from github:my-org/ai-config --with-rules --write
+
+# Remove local resources that no longer exist remotely
+aisyncer pull --from github:my-org/ai-config --with-rules --prune --write
+```
+
+`pull` uses the same planning model as `sync`: `ADD`, `SKIP`, `OVERWRITE`, and, when `--prune` is enabled, `DELETE`.
+
+### `aisyncer diff`
+
+Show what would change in local `.my-ai/` compared with a GitHub repository, without writing anything.
+
+```bash
+aisyncer diff --from github:my-org/ai-config
+aisyncer diff --from github:my-org/ai-config --with-rules
+aisyncer diff --from github:my-org/ai-config --with-rules --prune
+```
+
+`diff` is effectively a dry-run for `pull`. It is useful when you want to review incoming changes before updating your canonical source.
 
 ## Skill Format
 
@@ -428,8 +468,6 @@ Support workflow definitions (multi-step agent pipelines).
 
 ### Future
 
-- `aisyncer pull` — update skills from a remote GitHub repo (post-init)
-- `aisyncer diff` — show what changed between local and remote
 - More platform adapters as the ecosystem evolves
 - Shared team configs with org-level skill repos
 

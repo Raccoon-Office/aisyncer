@@ -10,6 +10,7 @@ import {
   hashResource,
   loadCanonicalResources,
   parseResource,
+  planResourcePrune,
   planResourceSync,
   validateResource,
 } from "./resource.js";
@@ -61,6 +62,7 @@ export function loadCanonicalSkills(skillsDir: string): CanonicalSkill[] {
 export function planSync(
   skills: SkillSpec[],
   adapter: PlatformAdapter,
+  options: { prune?: boolean } = {},
 ): SyncAction[] {
   const actions: ResourceSyncAction[] = skills.map((skill): ResourceSyncAction => {
     const targetPath = hasDirectorySource(skill)
@@ -96,6 +98,14 @@ export function planSync(
     };
   });
 
+  if (options.prune) {
+    actions.push(...planResourcePrune(
+      skills.map((skill) => skill.id),
+      adapter.listResourceIds(skillConfig),
+      (id) => adapter.resourceDirPath(id, skillConfig),
+    ));
+  }
+
   return actions.map((action) => ({ ...action, skillId: action.id }));
 }
 
@@ -108,6 +118,10 @@ export function executeSync(
 
   for (const action of actions) {
     if (action.action === "skip") continue;
+    if (action.action === "delete") {
+      adapter.deleteResource(action.id, skillConfig);
+      continue;
+    }
 
     const skill = skillMap.get(action.id);
     if (!skill) continue;
@@ -130,13 +144,24 @@ export function loadCanonicalRules(rulesDir: string): RuleSpec[] {
 export function planRuleSync(
   rules: RuleSpec[],
   adapter: PlatformAdapter,
+  options: { prune?: boolean } = {},
 ): ResourceSyncAction[] {
-  return planResourceSync(
+  const actions = planResourceSync(
     rules,
     (id) => adapter.readResource(id, ruleConfig),
     (id) => adapter.resourcePath(id, ruleConfig),
     ruleConfig,
   );
+
+  if (options.prune) {
+    actions.push(...planResourcePrune(
+      rules.map((rule) => rule.id),
+      adapter.listResourceIds(ruleConfig),
+      (id) => adapter.resourcePath(id, ruleConfig),
+    ));
+  }
+
+  return actions;
 }
 
 export function executeRuleSync(
@@ -144,7 +169,12 @@ export function executeRuleSync(
   actions: ResourceSyncAction[],
   adapter: PlatformAdapter,
 ): void {
-  executeResourceSync(rules, actions, (rule) => adapter.writeResource(rule, ruleConfig));
+  executeResourceSync(
+    rules,
+    actions,
+    (rule) => adapter.writeResource(rule, ruleConfig),
+    (id) => adapter.deleteResource(id, ruleConfig),
+  );
 }
 
 function hasDirectorySource(skill: SkillSpec): skill is CanonicalSkill {

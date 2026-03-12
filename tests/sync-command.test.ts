@@ -89,6 +89,24 @@ describe("syncCommand", () => {
     expect(fs.existsSync(path.join(codexDir, "skills", SAMPLE_SKILL.id, "references", "checklist.md"))).toBe(true);
   });
 
+  it("deletes stale target skills when prune is enabled", async () => {
+    const codexDir = path.join(tmpDir, ".codex-output");
+    writeCanonicalSkill(tmpDir, SAMPLE_SKILL);
+
+    const staleDir = path.join(codexDir, "skills", "stale-skill");
+    fs.mkdirSync(staleDir, { recursive: true });
+    fs.writeFileSync(path.join(staleDir, "SKILL.md"), emitSkill({
+      ...SAMPLE_SKILL,
+      id: "stale-skill",
+      name: "Stale Skill",
+    }), "utf-8");
+
+    await syncCommand({ to: "codex", write: true, prune: true, codexDir });
+
+    expect(fs.existsSync(staleDir)).toBe(false);
+    expect(fs.existsSync(path.join(codexDir, "skills", SAMPLE_SKILL.id, "SKILL.md"))).toBe(true);
+  });
+
   it("prints the codex rules skip note when no rules target is selected", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
     writeCanonicalRule(tmpDir, SAMPLE_RULE);

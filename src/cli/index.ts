@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { diffCommand } from "./commands/diff.js";
 import { initCommand } from "./commands/init.js";
+import { pullCommand } from "./commands/pull.js";
 import { validateCommand } from "./commands/validate.js";
 import { syncCommand } from "./commands/sync.js";
 import { readCliVersion } from "./version.js";
@@ -31,10 +33,28 @@ program
   .description("Sync skills to platform directories and rules to Windsurf")
   .option("--to <platforms>", "Target platforms: claude, codex, cursor, windsurf, or a comma-separated combination (if omitted, enters interactive mode)")
   .option("--write", "Actually write files (default is dry-run)")
+  .option("--prune", "Delete generated resources that no longer exist in .my-ai")
   .option("--claude-dir <dir>", "Override Claude output directory (default: .claude)")
   .option("--codex-dir <dir>", "Override Codex output directory (default: .agents)")
   .option("--cursor-dir <dir>", "Override Cursor output directory (default: .cursor)")
   .option("--sync-rules", "Also sync rules from .my-ai/rules to Windsurf (.windsurf/rules/*.md)")
   .action(syncCommand);
+
+program
+  .command("pull")
+  .description("Fetch resources from a GitHub repo and update .my-ai/")
+  .requiredOption("--from <source>", "Import resources from a GitHub repo (github:owner/repo)")
+  .option("--with-rules", "Also pull rules into .my-ai/rules")
+  .option("--write", "Actually write files (default is dry-run)")
+  .option("--prune", "Delete local resources that no longer exist in the remote source")
+  .action(pullCommand);
+
+program
+  .command("diff")
+  .description("Show what would change in .my-ai/ compared with a GitHub repo")
+  .requiredOption("--from <source>", "Compare against a GitHub repo (github:owner/repo)")
+  .option("--with-rules", "Also compare rules")
+  .option("--prune", "Also show local resources that would be deleted")
+  .action(diffCommand);
 
 program.parse();

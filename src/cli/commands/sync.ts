@@ -11,6 +11,7 @@ import { interactiveSyncFlow } from "./interactive-sync.js";
 interface SyncOptions {
   to?: string;
   write?: boolean;
+  prune?: boolean;
   claudeDir?: string;
   codexDir?: string;
   cursorDir?: string;
@@ -85,7 +86,7 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
     // Sync skills
     if (skills.length > 0) {
       console.log(`Syncing skills to ${adapter.name}...`);
-      const actions = planSync(skills, adapter);
+      const actions = planSync(skills, adapter, { prune: options.prune });
       for (const action of actions) {
         const label = actionLabel(action.action);
         console.log(`  ${label} ${action.id} → ${action.targetPath}`);
@@ -106,7 +107,7 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
       }
 
       console.log(`Syncing rules to ${adapter.name}...`);
-      const actions = planRuleSync(rules, adapter);
+      const actions = planRuleSync(rules, adapter, { prune: options.prune });
       for (const action of actions) {
         const label = actionLabel(action.action);
         console.log(`  ${label} ${action.id} → ${action.targetPath}`);
@@ -167,6 +168,8 @@ function actionLabel(action: string): string {
       return "[SKIP]     ";
     case "overwrite":
       return "[OVERWRITE]";
+    case "delete":
+      return "[DELETE]   ";
     default:
       return `[${action.toUpperCase()}]`;
   }
