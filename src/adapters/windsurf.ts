@@ -15,10 +15,17 @@ export function createWindsurfAdapter(windsurfDir?: string): PlatformAdapter {
     return path.join(baseDir, "rules", `${id}.md`);
   }
 
+  function windsurfWorkflowPath(id: string): string {
+    return path.join(baseDir, "workflows", `${id}.md`);
+  }
+
   return {
     name: base.name,
 
     resourceDirPath<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): string {
+      if (config.name === "workflow") {
+        return path.join(baseDir, "workflows");
+      }
       return base.resourceDirPath(id, config);
     },
 
@@ -26,29 +33,36 @@ export function createWindsurfAdapter(windsurfDir?: string): PlatformAdapter {
       if (config.name === "rule") {
         return windsurfRulePath(id);
       }
+      if (config.name === "workflow") {
+        return windsurfWorkflowPath(id);
+      }
       return base.resourcePath(id, config);
     },
 
     listResourceIds<T extends { id: string; content: string }>(config: ResourceConfig<T>): string[] {
-      if (config.name !== "rule") {
+      if (config.name !== "rule" && config.name !== "workflow") {
         return base.listResourceIds(config);
       }
 
-      const rulesDir = path.join(baseDir, "rules");
-      if (!fs.existsSync(rulesDir)) return [];
+      const targetDir = config.name === "rule"
+        ? path.join(baseDir, "rules")
+        : path.join(baseDir, "workflows");
+      if (!fs.existsSync(targetDir)) return [];
 
-      return fs.readdirSync(rulesDir, { withFileTypes: true })
+      return fs.readdirSync(targetDir, { withFileTypes: true })
         .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
         .map((entry) => entry.name.slice(0, -3))
         .sort();
     },
 
     readResource<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): T | null {
-      if (config.name !== "rule") {
+      if (config.name !== "rule" && config.name !== "workflow") {
         return base.readResource(id, config);
       }
 
-      const filePath = windsurfRulePath(id);
+      const filePath = config.name === "rule"
+        ? windsurfRulePath(id)
+        : windsurfWorkflowPath(id);
       if (!fs.existsSync(filePath)) return null;
 
       try {
@@ -62,23 +76,28 @@ export function createWindsurfAdapter(windsurfDir?: string): PlatformAdapter {
     },
 
     writeResource<T extends { id: string; content: string }>(item: T, config: ResourceConfig<T>): void {
-      if (config.name !== "rule") {
+      if (config.name !== "rule" && config.name !== "workflow") {
         base.writeResource(item, config);
         return;
       }
 
-      const filePath = windsurfRulePath(item.id);
+      const filePath = config.name === "rule"
+        ? windsurfRulePath(item.id)
+        : windsurfWorkflowPath(item.id);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, emitResource(item), "utf-8");
     },
 
     deleteResource<T extends { id: string; content: string }>(id: string, config: ResourceConfig<T>): void {
-      if (config.name !== "rule") {
+      if (config.name !== "rule" && config.name !== "workflow") {
         base.deleteResource(id, config);
         return;
       }
 
-      fs.rmSync(windsurfRulePath(id), { force: true });
+      fs.rmSync(
+        config.name === "rule" ? windsurfRulePath(id) : windsurfWorkflowPath(id),
+        { force: true },
+      );
     },
   };
 }

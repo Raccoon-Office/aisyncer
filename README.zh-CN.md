@@ -5,7 +5,7 @@
 [![npm version](https://img.shields.io/npm/v/aisyncer.svg)](https://www.npmjs.com/package/aisyncer)
 [npm package](https://www.npmjs.com/package/aisyncer)
 
-用于在 Claude、Codex、Cursor 和 Windsurf 之间同步 AI skills、rules 和 project instructions 的 CLI 工具。
+用于在 Claude、Codex、Cursor 和 Windsurf 之间同步 AI skills、rules、workflows 和 project instructions 的 CLI 工具。
 
 ## 这个工具解决什么问题
 
@@ -26,6 +26,9 @@
 .my-ai/rules/   ──→  .windsurf/rules/<id>.md
                  ──→  (Claude 使用 CLAUDE.md，不写 .claude/rules)
                  ──→  (Cursor 使用 .cursor/rules/*.mdc，当前不参与同步)
+
+.my-ai/workflows/  ──→  .cursor/commands/<id>.md
+                     ──→  .windsurf/workflows/<id>.md
 
 .my-ai/instructions/PROJECT.md  ──→  CLAUDE.md
                                ──→  AGENTS.md
@@ -49,14 +52,16 @@ npx aisyncer <command>
 ## 快速开始
 
 ```bash
-# 1) 初始化（创建 .my-ai，附带示例 skill，可选示例 rule / project instructions）
+# 1) 初始化（创建 .my-ai，附带示例 skill，可选示例 rule / workflow / project instructions）
 aisyncer init
 aisyncer init --with-rules
+aisyncer init --with-workflows
 aisyncer init --with-instructions
 
 # 2) 校验
 aisyncer validate
 aisyncer validate --with-rules
+aisyncer validate --with-workflows
 aisyncer validate --with-instructions
 
 # 3) 交互式同步 — 引导提示，无需记忆参数
@@ -65,36 +70,41 @@ aisyncer sync
 # 4) 预览同步（默认 dry-run）
 aisyncer sync --to claude,codex,cursor,windsurf
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
+aisyncer sync --to cursor,windsurf --sync-workflows
 aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions
 
 # 5) 实际写入
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
+aisyncer sync --to cursor,windsurf --sync-workflows --write
 aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions --write
 
 # 6) 对比本地 .my-ai 与 GitHub 仓库
 aisyncer diff --from github:my-org/ai-config
+aisyncer diff --from github:my-org/ai-config --with-workflows
 aisyncer diff --from github:my-org/ai-config --with-instructions
 
 # 7) 从 GitHub 仓库更新本地 .my-ai
 aisyncer pull --from github:my-org/ai-config --write
+aisyncer pull --from github:my-org/ai-config --with-workflows --write
 aisyncer pull --from github:my-org/ai-config --with-instructions --write
 ```
 
-> `--sync-rules` 只会同步到 Windsurf。`--sync-instructions` 会把共享正文写进 `AGENTS.md`，并在 `CLAUDE.md` 里生成一个很薄的 import wrapper。即使只选 `claude`，也会先生成 `AGENTS.md`，避免 import 悬空。
+> `--sync-rules` 只会同步到 Windsurf。`--sync-workflows` 只会同步到 Cursor 和 Windsurf。`--sync-instructions` 会把共享正文写进 `AGENTS.md`，并在 `CLAUDE.md` 里生成一个很薄的 import wrapper。即使只选 `claude`，也会先生成 `AGENTS.md`，避免 import 悬空。
 
 ## 命令说明
 
 ### `aisyncer init`
 
-初始化 `.my-ai/`，写入示例 skill（可选示例 rule 或 project instructions）：
+初始化 `.my-ai/`，写入示例 skill（可选示例 rule、workflow 或 project instructions）：
 
 ```bash
 aisyncer init
 aisyncer init --with-rules
+aisyncer init --with-workflows
 aisyncer init --with-instructions
 ```
 
-也可以从 GitHub 导入 skills / rules / project instructions：
+也可以从 GitHub 导入 skills / rules / workflows / project instructions：
 
 ```bash
 aisyncer init --from github:owner/repo
@@ -103,7 +113,7 @@ aisyncer init --from https://github.com/owner/repo
 aisyncer init --from https://github.com/owner/repo.git
 ```
 
-远程仓库结构（`rules/` 和 `instructions/` 都可选）：
+远程仓库结构（`rules/`、`workflows/` 和 `instructions/` 都可选）：
 
 ```text
 skills/                 # 必需
@@ -114,6 +124,9 @@ skills/                 # 必需
 rules/                  # 可选，自动识别
   my-rule/
     RULE.md
+workflows/              # 可选，自动识别
+  review-release/
+    WORKFLOW.md
 instructions/          # 可选，自动识别
   PROJECT.md
 ```
@@ -125,15 +138,16 @@ export GITHUB_TOKEN=ghp_xxx
 aisyncer init --from github:owner/private-repo
 ```
 
-> 不会 `git clone`。工具会通过 GitHub REST API 拉取完整的 `skills/<id>/` 目录（其中 `SKILL.md` 是入口文件）、`rules/<id>/RULE.md`，以及 `instructions/PROJECT.md`。
+> 不会 `git clone`。工具会通过 GitHub REST API 拉取完整的 `skills/<id>/` 目录（其中 `SKILL.md` 是入口文件）、`rules/<id>/RULE.md`、`workflows/<id>/WORKFLOW.md`，以及 `instructions/PROJECT.md`。
 
 ### `aisyncer validate`
 
-校验 `.my-ai/skills/`（可选 `.my-ai/rules/` 和 `.my-ai/instructions/PROJECT.md`）：
+校验 `.my-ai/skills/`（可选 `.my-ai/rules/`、`.my-ai/workflows/` 和 `.my-ai/instructions/PROJECT.md`）：
 
 ```bash
 aisyncer validate
 aisyncer validate --with-rules
+aisyncer validate --with-workflows
 aisyncer validate --with-instructions
 ```
 
@@ -162,11 +176,11 @@ aisyncer sync
 交互流程会依次：
 
 1. 检查 `.my-ai/` 是否存在
-2. 扫描可用的 skills、rules 和 project instructions
+2. 扫描可用的 skills、rules、workflows 和 project instructions
 3. 让你选择目标平台（claude、codex、cursor、windsurf）
-4. 让你选择资源类型（skills、rules、project instructions — 根据平台支持情况过滤）
+4. 让你选择资源类型（skills、rules、workflows、project instructions — 根据平台支持情况过滤）
 5. 询问是否清理已不存在于 `.my-ai` 的派生资源
-6. 如果同步 skills，可选：自定义 Claude、Codex 或 Cursor 输出目录
+6. 如果同步 skills 或 Cursor workflows，可选：自定义 Claude、Codex 或 Cursor 输出目录
 7. 预览所有变更（ADD / SKIP / OVERWRITE / DELETE）
 8. 确认后写入
 
@@ -185,15 +199,20 @@ aisyncer sync --to claude,codex,cursor,windsurf
 # 带 rules（仅 Windsurf）
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules
 
+# 带 workflows（仅 Cursor / Windsurf）
+aisyncer sync --to cursor,windsurf --sync-workflows
+
 # 带 project instructions
 aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions
 
 # 实际写入
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --write
+aisyncer sync --to cursor,windsurf --sync-workflows --write
 aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions --write
 
 # 同步时顺便删除目标端已经陈旧的派生资源
 aisyncer sync --to claude,codex,cursor,windsurf --sync-rules --prune --write
+aisyncer sync --to cursor,windsurf --sync-workflows --prune --write
 aisyncer sync --to claude,codex,cursor,windsurf --sync-instructions --prune --write
 
 # 自定义 Claude 输出目录
@@ -220,6 +239,13 @@ project instructions 同步行为：
 - Windsurf：同样使用 `AGENTS.md`；如果和 Codex/Cursor 一起选择，`aisyncer` 仍然只会更新一次
 - Claude：会先把共享正文写进 `AGENTS.md`，再在 `CLAUDE.md` 中写入一个受管 wrapper，通过 `@AGENTS.md` 引入
 
+workflow 同步行为：
+
+- Cursor：写入 `.cursor/commands/<id>.md`
+- Windsurf：写入 `.windsurf/workflows/<id>.md`
+- Claude：跳过（当前没有 workflow 同步目标）
+- Codex：跳过（当前没有 workflow 同步目标）
+
 skill 同步行为：
 
 - `SKILL.md` 是 skill 入口文件
@@ -231,8 +257,8 @@ skill 同步行为：
 
 - Claude：`.claude/skills/<id>/SKILL.md`
 - Codex：默认写入 `.agents/skills/<id>/SKILL.md`；如需用户级或管理员级位置，可用 `--codex-dir ~/.agents` 或 `--codex-dir /etc/codex`
-- Cursor：默认写入 `.cursor/skills/<id>/SKILL.md`；可通过 `--cursor-dir` 覆盖根目录
-- Windsurf：`.windsurf/skills/<id>/SKILL.md` 与 `.windsurf/rules/<id>.md`
+- Cursor：默认写入 `.cursor/skills/<id>/SKILL.md`；workflow 写入 `.cursor/commands/<id>.md`；可通过 `--cursor-dir` 覆盖根目录
+- Windsurf：`.windsurf/skills/<id>/SKILL.md`、`.windsurf/rules/<id>.md` 与 `.windsurf/workflows/<id>.md`
 
 project instructions 不是整文件覆盖，而是写入 `AGENTS.md` 中的受管 marker block，并在 `CLAUDE.md` 中写一个受管 import wrapper，所以文件里 block 之外的手写内容会被保留。如果同时选择 Claude 和 AGENTS 系工具，就不会再把同一份正文重复写两遍。
 
@@ -247,11 +273,15 @@ aisyncer pull --from github:my-org/ai-config
 # 拉取 skills 和 rules
 aisyncer pull --from github:my-org/ai-config --with-rules --write
 
+# 一起拉取 workflows
+aisyncer pull --from github:my-org/ai-config --with-workflows --write
+
 # 一起拉取 project instructions
 aisyncer pull --from github:my-org/ai-config --with-instructions --write
 
 # 同时删除远端已不存在的本地资源
 aisyncer pull --from github:my-org/ai-config --with-rules --prune --write
+aisyncer pull --from github:my-org/ai-config --with-workflows --prune --write
 aisyncer pull --from github:my-org/ai-config --with-rules --with-instructions --prune --write
 ```
 
@@ -264,9 +294,10 @@ aisyncer pull --from github:my-org/ai-config --with-rules --with-instructions --
 ```bash
 aisyncer diff --from github:my-org/ai-config
 aisyncer diff --from github:my-org/ai-config --with-rules
+aisyncer diff --from github:my-org/ai-config --with-workflows
 aisyncer diff --from github:my-org/ai-config --with-instructions
 aisyncer diff --from github:my-org/ai-config --with-rules --prune
-aisyncer diff --from github:my-org/ai-config --with-rules --with-instructions --prune
+aisyncer diff --from github:my-org/ai-config --with-rules --with-workflows --with-instructions --prune
 ```
 
 `diff` 可以理解为 `pull` 的 dry-run，用来在真正更新前先看清楚会发生什么。
@@ -296,6 +327,30 @@ project instructions 固定放在 `.my-ai/instructions/PROJECT.md`，它是纯 m
 
 `aisyncer` 会把这段 markdown 同步到 `AGENTS.md` 的受管 block 中；如果选择 Claude，还会在 `CLAUDE.md` 写入一个 `@AGENTS.md` 的受管 wrapper。
 
+## Workflow 文件格式
+
+workflow 固定放在 `.my-ai/workflows/<id>/WORKFLOW.md`，格式与 Rule 相同，也是 YAML frontmatter + Markdown 正文：
+
+```markdown
+---
+schemaVersion: 1
+id: release-check
+name: Release Check
+description: Manual release-readiness workflow for Cursor and Windsurf
+metadata:
+  version: 1.0.0
+  tags:
+    - release
+    - workflow
+---
+
+# Release Check
+
+1. Summarize the scope of the release.
+2. Run the validation commands.
+3. Call out blockers and rollback concerns.
+```
+
 ## 目录结构示例
 
 ```text
@@ -309,6 +364,9 @@ your-project/
     rules/
       code-style/
         RULE.md
+    workflows/
+      release-check/
+        WORKFLOW.md
     instructions/
       PROJECT.md
 
@@ -322,6 +380,8 @@ your-project/
     skills/
       code-review/
         SKILL.md
+    commands/
+      release-check.md
     rules/
       my-rule.mdc        # Cursor 原生项目规则，当前不会由 aisyncer 生成
 
@@ -333,11 +393,13 @@ your-project/
         SKILL.md
     rules/
       code-style.md
+    workflows/
+      release-check.md
 ```
 
 Codex 会从当前工作目录一路向上扫描到仓库根目录的 `.agents/skills`。`aisyncer` 默认写入当前仓库的 `.agents/skills/<id>/SKILL.md`；如果你想写到用户级或管理员级位置，可以传 `--codex-dir ~/.agents` 或 `--codex-dir /etc/codex`。
 
-Cursor 的项目级 skills 位于 `.cursor/skills/<id>/SKILL.md`。项目级 rules 位于 `.cursor/rules/*.mdc`，当前 `aisyncer` 还不会生成这些文件。
+Cursor 的项目级 skills 位于 `.cursor/skills/<id>/SKILL.md`。workflow 位于 `.cursor/commands/<id>.md`。项目级 rules 位于 `.cursor/rules/*.mdc`，当前 `aisyncer` 还不会生成这些文件。
 
 ## 设计原则
 
@@ -359,13 +421,13 @@ Cursor 的项目级 skills 位于 `.cursor/skills/<id>/SKILL.md`。项目级 rul
 
 ## 团队共享（GitHub）
 
-可维护一个公共 skills / rules / project instructions 仓库，然后成员执行：
+可维护一个公共 skills / rules / workflows / project instructions 仓库，然后成员执行：
 
 ```bash
 aisyncer init --from github:my-org/ai-config
 ```
 
-工具会通过 GitHub API 拉取内容到 `.my-ai/`，再由 `sync` 分发到各平台：skills 分发到技能目录，rules 只分发到 Windsurf，project instructions 分发到 `AGENTS.md`，并在需要时为 Claude 生成 `CLAUDE.md` import wrapper。
+工具会通过 GitHub API 拉取内容到 `.my-ai/`，再由 `sync` 分发到各平台：skills 分发到技能目录，rules 只分发到 Windsurf，workflows 分发到 Cursor 和 Windsurf，project instructions 分发到 `AGENTS.md`，并在需要时为 Claude 生成 `CLAUDE.md` import wrapper。
 
 可直接参考的示例仓库：
 
@@ -381,7 +443,7 @@ aisyncer init --from github:goWrongWay/skills-repo
 
 - v0.2：Rules（已完成）
 - v0.3：Project Instructions（已完成）
-- v0.4：Workflows
+- v0.4：Workflows（已完成）
 
 ## License
 

@@ -8,9 +8,8 @@ import {
   interactiveSyncFlow,
   type ResourceDetectionResult,
 } from "../src/cli/commands/interactive-sync.js";
-import type { SkillSpec, RuleSpec } from "../src/core/schema.js";
-import { emitSkill } from "../src/core/parser.js";
-import { emitRule } from "../src/core/parser.js";
+import type { SkillSpec, RuleSpec, WorkflowSpec } from "../src/core/schema.js";
+import { emitSkill, emitRule, emitWorkflow } from "../src/core/parser.js";
 import { emitProjectInstructions } from "../src/core/project-instructions.js";
 
 const SKILL_A: SkillSpec = {
@@ -29,6 +28,14 @@ const RULE_A: RuleSpec = {
   content: "# Rule A\n\nRule content.",
 };
 
+const WORKFLOW_A: WorkflowSpec = {
+  schemaVersion: 1,
+  id: "workflow-a",
+  name: "Workflow A",
+  description: "First workflow",
+  content: "# Workflow A\n\n1. Step one.\n2. Step two.\n",
+};
+
 function writeCanonicalSkill(baseDir: string, skill: SkillSpec): void {
   const dir = path.join(baseDir, skill.id);
   fs.mkdirSync(dir, { recursive: true });
@@ -45,6 +52,12 @@ function writeCanonicalProjectInstructions(baseDir: string, content = "# Project
   const filePath = path.join(baseDir, "PROJECT.md");
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, emitProjectInstructions({ content }), "utf-8");
+}
+
+function writeCanonicalWorkflow(baseDir: string, workflow: WorkflowSpec): void {
+  const dir = path.join(baseDir, workflow.id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "WORKFLOW.md"), emitWorkflow(workflow), "utf-8");
 }
 
 describe("detectAvailableResources", () => {
@@ -67,8 +80,10 @@ describe("detectAvailableResources", () => {
     expect(result.hasSkills).toBe(false);
     expect(result.hasRules).toBe(false);
     expect(result.hasInstructions).toBe(false);
+    expect(result.hasWorkflows).toBe(false);
     expect(result.skillsCount).toBe(0);
     expect(result.rulesCount).toBe(0);
+    expect(result.workflowsCount).toBe(0);
   });
 
   it("detects skills when .my-ai/skills has valid skills", () => {
@@ -81,6 +96,7 @@ describe("detectAvailableResources", () => {
     expect(result.skillsCount).toBe(1);
     expect(result.hasRules).toBe(false);
     expect(result.hasInstructions).toBe(false);
+    expect(result.hasWorkflows).toBe(false);
   });
 
   it("detects rules when .my-ai/rules has valid rules", () => {
@@ -93,18 +109,22 @@ describe("detectAvailableResources", () => {
     expect(result.hasRules).toBe(true);
     expect(result.hasInstructions).toBe(false);
     expect(result.rulesCount).toBe(1);
+    expect(result.hasWorkflows).toBe(false);
   });
 
-  it("detects skills, rules, and project instructions", () => {
+  it("detects skills, rules, project instructions, and workflows", () => {
     const skillsDir = path.join(tmpDir, ".my-ai", "skills");
     const rulesDir = path.join(tmpDir, ".my-ai", "rules");
     const instructionsDir = path.join(tmpDir, ".my-ai", "instructions");
+    const workflowsDir = path.join(tmpDir, ".my-ai", "workflows");
     fs.mkdirSync(skillsDir, { recursive: true });
     fs.mkdirSync(rulesDir, { recursive: true });
     fs.mkdirSync(instructionsDir, { recursive: true });
+    fs.mkdirSync(workflowsDir, { recursive: true });
     writeCanonicalSkill(skillsDir, SKILL_A);
     writeCanonicalRule(rulesDir, RULE_A);
     writeCanonicalProjectInstructions(instructionsDir);
+    writeCanonicalWorkflow(workflowsDir, WORKFLOW_A);
 
     const result = detectAvailableResources();
     expect(result.hasSkills).toBe(true);
@@ -112,6 +132,8 @@ describe("detectAvailableResources", () => {
     expect(result.hasRules).toBe(true);
     expect(result.rulesCount).toBe(1);
     expect(result.hasInstructions).toBe(true);
+    expect(result.hasWorkflows).toBe(true);
+    expect(result.workflowsCount).toBe(1);
   });
 
   it("returns false when skills directory exists but has no valid skills", () => {
@@ -130,6 +152,7 @@ describe("detectAvailableResources", () => {
     expect(result.hasSkills).toBe(false);
     expect(result.skillsCount).toBe(0);
     expect(result.hasInstructions).toBe(false);
+    expect(result.hasWorkflows).toBe(false);
   });
 });
 
@@ -139,8 +162,10 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: true,
       hasRules: false,
       hasInstructions: false,
+      hasWorkflows: false,
       skillsCount: 3,
       rulesCount: 0,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["claude", "windsurf"], detection);
@@ -154,8 +179,10 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: true,
       hasRules: true,
       hasInstructions: false,
+      hasWorkflows: false,
       skillsCount: 2,
       rulesCount: 1,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["windsurf"], detection);
@@ -169,8 +196,10 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: true,
       hasRules: true,
       hasInstructions: false,
+      hasWorkflows: false,
       skillsCount: 2,
       rulesCount: 1,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["claude"], detection);
@@ -183,8 +212,10 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: true,
       hasRules: true,
       hasInstructions: false,
+      hasWorkflows: false,
       skillsCount: 2,
       rulesCount: 1,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["cursor"], detection);
@@ -197,8 +228,10 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: true,
       hasRules: true,
       hasInstructions: false,
+      hasWorkflows: false,
       skillsCount: 2,
       rulesCount: 1,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["claude", "windsurf"], detection);
@@ -212,8 +245,10 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: false,
       hasRules: false,
       hasInstructions: false,
+      hasWorkflows: false,
       skillsCount: 0,
       rulesCount: 0,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["claude", "windsurf"], detection);
@@ -225,8 +260,10 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: false,
       hasRules: true,
       hasInstructions: false,
+      hasWorkflows: false,
       skillsCount: 0,
       rulesCount: 2,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["windsurf"], detection);
@@ -239,8 +276,10 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: false,
       hasRules: false,
       hasInstructions: true,
+      hasWorkflows: false,
       skillsCount: 0,
       rulesCount: 0,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["claude"], detection);
@@ -253,13 +292,47 @@ describe("getAvailableResourceTypes", () => {
       hasSkills: false,
       hasRules: false,
       hasInstructions: true,
+      hasWorkflows: false,
       skillsCount: 0,
       rulesCount: 0,
+      workflowsCount: 0,
     };
 
     const types = getAvailableResourceTypes(["windsurf"], detection);
     expect(types).toHaveLength(1);
     expect(types[0].value).toBe("instructions");
+  });
+
+  it("returns workflows when cursor is selected", () => {
+    const detection: ResourceDetectionResult = {
+      hasSkills: false,
+      hasRules: false,
+      hasInstructions: false,
+      hasWorkflows: true,
+      skillsCount: 0,
+      rulesCount: 0,
+      workflowsCount: 2,
+    };
+
+    const types = getAvailableResourceTypes(["cursor"], detection);
+    expect(types).toHaveLength(1);
+    expect(types[0].value).toBe("workflows");
+    expect(types[0].name).toContain("2 found");
+  });
+
+  it("does not return workflows when only claude is selected", () => {
+    const detection: ResourceDetectionResult = {
+      hasSkills: false,
+      hasRules: false,
+      hasInstructions: false,
+      hasWorkflows: true,
+      skillsCount: 0,
+      rulesCount: 0,
+      workflowsCount: 1,
+    };
+
+    const types = getAvailableResourceTypes(["claude"], detection);
+    expect(types).toHaveLength(0);
   });
 });
 

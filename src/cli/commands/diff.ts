@@ -4,6 +4,7 @@ export async function diffCommand(options: {
   from: string;
   withRules?: boolean;
   withInstructions?: boolean;
+  withWorkflows?: boolean;
   prune?: boolean;
 }): Promise<void> {
   await runRemoteSync("diff", options);

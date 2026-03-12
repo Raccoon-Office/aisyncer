@@ -4,6 +4,7 @@ export async function pullCommand(options: {
   from: string;
   withRules?: boolean;
   withInstructions?: boolean;
+  withWorkflows?: boolean;
   write?: boolean;
   prune?: boolean;
 }): Promise<void> {

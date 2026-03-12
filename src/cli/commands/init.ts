@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { emitSkill, emitRule } from "../../core/parser.js";
+import { emitSkill, emitRule, emitWorkflow } from "../../core/parser.js";
 import { emitProjectInstructions } from "../../core/project-instructions.js";
-import type { SkillSpec, RuleSpec } from "../../core/schema.js";
+import type { SkillSpec, RuleSpec, WorkflowSpec } from "../../core/schema.js";
 import { fetchFromGitHub } from "../../github/fetch.js";
 import { materializeFetchedResources } from "../../github/materialize.js";
 
@@ -62,7 +62,33 @@ These instructions apply across assistants for this repository.
 - Keep generated platform files derived from .my-ai`,
 };
 
-export async function initCommand(options: { from?: string; withRules?: boolean; withInstructions?: boolean }): Promise<void> {
+const EXAMPLE_WORKFLOW: WorkflowSpec = {
+  schemaVersion: 1,
+  id: "review-release",
+  name: "Review Release",
+  description: "Reusable release-readiness workflow for Cursor and Windsurf",
+  content: `# Review Release
+
+Run this workflow when you want a structured pre-release pass.
+
+## Steps
+
+1. Summarize the scope of the pending release.
+2. Check user-facing docs and changelog notes.
+3. Run the validation commands required by the repository.
+4. Call out blockers, rollback concerns, and open follow-ups.`,
+  metadata: {
+    version: "1.0.0",
+    tags: ["example", "workflow"],
+  },
+};
+
+export async function initCommand(options: {
+  from?: string;
+  withRules?: boolean;
+  withInstructions?: boolean;
+  withWorkflows?: boolean;
+}): Promise<void> {
   const baseDir = path.resolve(".my-ai");
   const skillsDir = path.join(baseDir, "skills");
 
@@ -74,11 +100,21 @@ export async function initCommand(options: { from?: string; withRules?: boolean;
   if (options.from) {
     await initFromGitHub(options.from, skillsDir);
   } else {
-    initLocal(skillsDir, options.withRules ?? false, options.withInstructions ?? false);
+    initLocal(
+      skillsDir,
+      options.withRules ?? false,
+      options.withInstructions ?? false,
+      options.withWorkflows ?? false,
+    );
   }
 }
 
-function initLocal(skillsDir: string, withRules: boolean, withInstructions: boolean): void {
+function initLocal(
+  skillsDir: string,
+  withRules: boolean,
+  withInstructions: boolean,
+  withWorkflows: boolean,
+): void {
   const exampleDir = path.join(skillsDir, EXAMPLE_SKILL.id);
   const skillFile = path.join(exampleDir, "SKILL.md");
 
@@ -112,6 +148,15 @@ function initLocal(skillsDir: string, withRules: boolean, withInstructions: bool
     console.log("\nInitialized project instructions:");
     console.log(`  ${instructionsFile}`);
   }
+
+  if (withWorkflows) {
+    const workflowFile = path.join(path.dirname(skillsDir), "workflows", EXAMPLE_WORKFLOW.id, "WORKFLOW.md");
+    fs.mkdirSync(path.dirname(workflowFile), { recursive: true });
+    fs.writeFileSync(workflowFile, emitWorkflow(EXAMPLE_WORKFLOW), "utf-8");
+
+    console.log("\nInitialized workflows with example workflow:");
+    console.log(`  ${workflowFile}`);
+  }
 }
 
 async function initFromGitHub(source: string, skillsDir: string): Promise<void> {
@@ -136,17 +181,22 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
     console.warn(`Warning: ${warning}`);
   }
 
-  if (result.skills.length === 0 && result.rules.length === 0) {
-    console.error("No skills or rules were fetched. Aborting init.");
+  if (result.skills.length === 0
+    && result.rules.length === 0
+    && result.workflows.length === 0
+    && !result.projectInstructions) {
+    console.error("No skills, rules, workflows, or project instructions were fetched. Aborting init.");
     process.exit(1);
   }
 
   const {
     skillsWritten,
     rulesWritten,
+    workflowsWritten,
     projectInstructionsWritten,
     writtenSkillIds,
     writtenRuleIds,
+    writtenWorkflowIds,
     validationErrors,
   } = materializeFetchedResources(result, baseDir);
 
@@ -156,6 +206,10 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
 
   for (const id of writtenRuleIds) {
     console.log(`  + rule: ${id}`);
+  }
+
+  for (const id of writtenWorkflowIds) {
+    console.log(`  + workflow: ${id}`);
   }
 
   if (projectInstructionsWritten) {
@@ -169,8 +223,8 @@ async function initFromGitHub(source: string, skillsDir: string): Promise<void> 
     }
   }
 
-  const total = skillsWritten + rulesWritten + (projectInstructionsWritten ? 1 : 0);
-  const summary = [`${skillsWritten} skill(s)`, `${rulesWritten} rule(s)`];
+  const total = skillsWritten + rulesWritten + workflowsWritten + (projectInstructionsWritten ? 1 : 0);
+  const summary = [`${skillsWritten} skill(s)`, `${rulesWritten} rule(s)`, `${workflowsWritten} workflow(s)`];
   if (projectInstructionsWritten) {
     summary.push("project instructions");
   }

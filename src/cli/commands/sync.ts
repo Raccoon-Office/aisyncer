@@ -11,8 +11,17 @@ import {
   planManagedProjectInstructionsSync,
   type ProjectInstructionsTarget,
 } from "../../core/project-instructions.js";
-import { loadCanonicalSkills, planSync, executeSync } from "../../core/sync.js";
-import { loadCanonicalRules, planRuleSync, executeRuleSync } from "../../core/sync.js";
+import {
+  loadCanonicalSkills,
+  loadCanonicalRules,
+  loadCanonicalWorkflows,
+  planSync,
+  planRuleSync,
+  planWorkflowSync,
+  executeSync,
+  executeRuleSync,
+  executeWorkflowSync,
+} from "../../core/sync.js";
 import { interactiveSyncFlow } from "./interactive-sync.js";
 
 interface SyncOptions {
@@ -24,10 +33,12 @@ interface SyncOptions {
   cursorDir?: string;
   syncRules?: boolean;
   syncInstructions?: boolean;
+  syncWorkflows?: boolean;
 }
 
 type PlatformName = "claude" | "codex" | "cursor" | "windsurf";
 type RuleUnsupportedPlatform = Exclude<PlatformName, "windsurf">;
+type WorkflowUnsupportedPlatform = Exclude<PlatformName, "cursor" | "windsurf">;
 
 const PLATFORM_ADAPTERS = {
   claude: (options: SyncOptions) => createClaudeAdapter(options.claudeDir),
@@ -39,11 +50,16 @@ const PLATFORM_ADAPTERS = {
 export const SUPPORTED_PLATFORMS = Object.keys(PLATFORM_ADAPTERS) as PlatformName[];
 export const RULE_SYNC_PLATFORMS = new Set<string>(["windsurf"]);
 export const INSTRUCTION_SYNC_PLATFORMS = new Set<string>(["claude", "codex", "cursor", "windsurf"]);
+export const WORKFLOW_SYNC_PLATFORMS = new Set<string>(["cursor", "windsurf"]);
 const RULE_SKIP_NOTES = {
   claude: "Claude uses CLAUDE.md for project instructions.",
   codex: "Codex has no rules sync target. Use AGENTS.md for project instructions.",
   cursor: "Cursor rules sync is not supported yet. Manage project rules in .cursor/rules/*.mdc.",
 } satisfies Record<RuleUnsupportedPlatform, string>;
+const WORKFLOW_SKIP_NOTES = {
+  claude: "Claude workflow sync is not supported yet.",
+  codex: "Codex workflow sync is not supported yet.",
+} satisfies Record<WorkflowUnsupportedPlatform, string>;
 
 export async function syncCommand(options: SyncOptions): Promise<void> {
   if (!options.to) {
@@ -60,40 +76,51 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
   const rules = options.syncRules
     ? loadCanonicalRules(path.resolve(".my-ai", "rules"))
     : [];
+  const workflows = options.syncWorkflows
+    ? loadCanonicalWorkflows(path.resolve(".my-ai", "workflows"))
+    : [];
   const projectInstructions = options.syncInstructions
     ? loadProjectInstructions(canonicalProjectInstructionsPath(path.resolve(".my-ai")))
     : null;
 
   const hasRuleTarget = platforms.some((p) => RULE_SYNC_PLATFORMS.has(p));
   const hasInstructionTarget = platforms.some((p) => INSTRUCTION_SYNC_PLATFORMS.has(p));
+  const hasWorkflowTarget = platforms.some((p) => WORKFLOW_SYNC_PLATFORMS.has(p));
 
   if (skills.length === 0
     && rules.length === 0
+    && workflows.length === 0
     && !projectInstructions
     && !(options.syncInstructions && options.prune)) {
-    if (options.syncRules && options.syncInstructions) {
-      console.log("No valid skills, rules, or project instructions found in .my-ai. Run 'aisyncer init' first.");
-    } else if (options.syncRules) {
-      console.log("No valid skills or rules found in .my-ai. Run 'aisyncer init' first.");
-    } else if (options.syncInstructions) {
-      console.log("No valid skills or project instructions found in .my-ai. Run 'aisyncer init' first.");
-    } else {
-      console.log("No valid skills found in .my-ai/skills. Run 'aisyncer init' first.");
-    }
+    console.log(noResourcesMessage(options));
     return;
   }
 
-  if (options.syncRules && rules.length > 0 && skills.length === 0 && !hasRuleTarget) {
+  if (options.syncRules && rules.length > 0 && !hasRuleTarget) {
     console.log("No supported rules target selected. Rules sync currently targets windsurf (.windsurf/rules/*.md) only.");
     for (const platform of platforms) {
       if (isRuleUnsupportedPlatform(platform)) {
         console.log(ruleSkipNote(platform));
       }
     }
+  }
 
-    if (!options.syncInstructions || !hasInstructionTarget) {
-      return;
+  if (options.syncWorkflows && workflows.length > 0 && !hasWorkflowTarget) {
+    console.log("No supported workflows target selected. Workflow sync currently targets Cursor (.cursor/commands/*.md) and Windsurf (.windsurf/workflows/*.md) only.");
+    for (const platform of platforms) {
+      if (isWorkflowUnsupportedPlatform(platform)) {
+        console.log(workflowSkipNote(platform));
+      }
     }
+  }
+
+  const canSyncSomething = skills.length > 0
+    || (options.syncRules && rules.length > 0 && hasRuleTarget)
+    || (options.syncWorkflows && workflows.length > 0 && hasWorkflowTarget)
+    || (options.syncInstructions && hasInstructionTarget && (projectInstructions !== null || !!options.prune));
+
+  if (!canSyncSomething) {
+    return;
   }
 
   const dryRun = !options.write;
@@ -126,20 +153,39 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
       if (isRuleUnsupportedPlatform(platform)) {
         console.log(`Skipping rules for ${adapter.name}: ${ruleSkipNote(platform)}`);
         console.log();
-        continue;
+      } else {
+        console.log(`Syncing rules to ${adapter.name}...`);
+        const actions = planRuleSync(rules, adapter, { prune: options.prune });
+        for (const action of actions) {
+          const label = actionLabel(action.action);
+          console.log(`  ${label} ${action.id} → ${action.targetPath}`);
+          if (action.action !== "skip") hasChanges = true;
+        }
+        if (!dryRun) {
+          executeRuleSync(rules, actions, adapter);
+        }
+        console.log();
       }
+    }
 
-      console.log(`Syncing rules to ${adapter.name}...`);
-      const actions = planRuleSync(rules, adapter, { prune: options.prune });
-      for (const action of actions) {
-        const label = actionLabel(action.action);
-        console.log(`  ${label} ${action.id} → ${action.targetPath}`);
-        if (action.action !== "skip") hasChanges = true;
+    // Sync workflows
+    if (workflows.length > 0) {
+      if (isWorkflowUnsupportedPlatform(platform)) {
+        console.log(`Skipping workflows for ${adapter.name}: ${workflowSkipNote(platform)}`);
+        console.log();
+      } else {
+        console.log(`Syncing workflows to ${adapter.name}...`);
+        const actions = planWorkflowSync(workflows, adapter, { prune: options.prune });
+        for (const action of actions) {
+          const label = actionLabel(action.action);
+          console.log(`  ${label} ${action.id} → ${action.targetPath}`);
+          if (action.action !== "skip") hasChanges = true;
+        }
+        if (!dryRun) {
+          executeWorkflowSync(workflows, actions, adapter);
+        }
+        console.log();
       }
-      if (!dryRun) {
-        executeRuleSync(rules, actions, adapter);
-      }
-      console.log();
     }
   }
 
@@ -187,6 +233,10 @@ function isRuleUnsupportedPlatform(platform: PlatformName): platform is RuleUnsu
   return !RULE_SYNC_PLATFORMS.has(platform);
 }
 
+function isWorkflowUnsupportedPlatform(platform: PlatformName): platform is WorkflowUnsupportedPlatform {
+  return !WORKFLOW_SYNC_PLATFORMS.has(platform);
+}
+
 function parsePlatforms(value: string): PlatformName[] {
   return value
     .split(",")
@@ -208,6 +258,10 @@ function resolveAdapter(platform: PlatformName, options: SyncOptions): PlatformA
 
 function ruleSkipNote(platform: RuleUnsupportedPlatform): string {
   return RULE_SKIP_NOTES[platform];
+}
+
+function workflowSkipNote(platform: WorkflowUnsupportedPlatform): string {
+  return WORKFLOW_SKIP_NOTES[platform];
 }
 
 export function resolveInstructionTargets(platforms: PlatformName[]): ProjectInstructionsTarget[] {
@@ -255,4 +309,32 @@ function actionLabel(action: string): string {
     default:
       return `[${action.toUpperCase()}]`;
   }
+}
+
+function noResourcesMessage(options: SyncOptions): string {
+  const resources = ["skills"];
+
+  if (options.syncRules) {
+    resources.push("rules");
+  }
+  if (options.syncWorkflows) {
+    resources.push("workflows");
+  }
+  if (options.syncInstructions) {
+    resources.push("project instructions");
+  }
+
+  if (resources.length === 1) {
+    return "No valid skills found in .my-ai/skills. Run 'aisyncer init' first.";
+  }
+
+  return `No valid ${joinResourceLabels(resources)} found in .my-ai. Run 'aisyncer init' first.`;
+}
+
+function joinResourceLabels(labels: string[]): string {
+  if (labels.length === 2) {
+    return `${labels[0]} or ${labels[1]}`;
+  }
+
+  return `${labels.slice(0, -1).join(", ")}, or ${labels[labels.length - 1]}`;
 }

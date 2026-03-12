@@ -88,7 +88,7 @@ describe("parseGitHubSource", () => {
 });
 
 describe("fetchFromGitHub", () => {
-  it("groups all files under each skill directory", async () => {
+  it("fetches skills, rules, workflows, and project instructions", async () => {
     const responses = new Map<string, Response>([
       [
         "https://api.github.com/repos/my-org/my-repo/branches/main",
@@ -103,6 +103,7 @@ describe("fetchFromGitHub", () => {
             { path: "skills/code-review/references/checklist.md", type: "blob", url: "https://api.github.com/blob/reference" },
             { path: "skills/code-review/scripts/review.sh", type: "blob", url: "https://api.github.com/blob/script" },
             { path: "rules/default/RULE.md", type: "blob", url: "https://api.github.com/blob/rule" },
+            { path: "workflows/release-check/WORKFLOW.md", type: "blob", url: "https://api.github.com/blob/workflow" },
             { path: "instructions/PROJECT.md", type: "blob", url: "https://api.github.com/blob/instructions" },
           ],
         }),
@@ -122,6 +123,10 @@ describe("fetchFromGitHub", () => {
       [
         "https://api.github.com/blob/rule",
         jsonResponse(encodedBlob("---\nschemaVersion: 1\nid: default\nname: Default Rule\ndescription: Rule\n---\n\n# Rule\n")),
+      ],
+      [
+        "https://api.github.com/blob/workflow",
+        jsonResponse(encodedBlob("---\nschemaVersion: 1\nid: release-check\nname: Release Check\ndescription: Review the release\n---\n\n# Release Check\n")),
       ],
       [
         "https://api.github.com/blob/instructions",
@@ -154,6 +159,12 @@ describe("fetchFromGitHub", () => {
       {
         id: "default",
         content: "---\nschemaVersion: 1\nid: default\nname: Default Rule\ndescription: Rule\n---\n\n# Rule\n",
+      },
+    ]);
+    expect(result.workflows).toEqual([
+      {
+        id: "release-check",
+        content: "---\nschemaVersion: 1\nid: release-check\nname: Release Check\ndescription: Review the release\n---\n\n# Release Check\n",
       },
     ]);
     expect(result.projectInstructions).toEqual({

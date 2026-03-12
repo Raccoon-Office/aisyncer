@@ -13,20 +13,24 @@ import {
   planManagedProjectInstructionsSync,
   type ProjectInstructions,
 } from "../../core/project-instructions.js";
-import type { SkillSpec, RuleSpec } from "../../core/schema.js";
+import type { SkillSpec, RuleSpec, WorkflowSpec } from "../../core/schema.js";
 import {
   loadCanonicalSkills,
   planSync,
   executeSync,
   loadCanonicalRules,
+  loadCanonicalWorkflows,
   planRuleSync,
+  planWorkflowSync,
   executeRuleSync,
+  executeWorkflowSync,
 } from "../../core/sync.js";
 import type { ResourceSyncAction } from "../../core/resource.js";
 import {
   INSTRUCTION_SYNC_PLATFORMS,
   SUPPORTED_PLATFORMS,
   RULE_SYNC_PLATFORMS,
+  WORKFLOW_SYNC_PLATFORMS,
   resolveInstructionTargets,
 } from "./sync.js";
 
@@ -34,8 +38,10 @@ export interface ResourceDetectionResult {
   hasSkills: boolean;
   hasRules: boolean;
   hasInstructions: boolean;
+  hasWorkflows: boolean;
   skillsCount: number;
   rulesCount: number;
+  workflowsCount: number;
 }
 
 type InteractivePlatform = "claude" | "codex" | "cursor" | "windsurf";
@@ -74,7 +80,28 @@ export function detectAvailableResources(): ResourceDetectionResult {
   const instructions = loadProjectInstructions(canonicalProjectInstructionsPath(path.resolve(".my-ai")));
   const hasInstructions = instructions !== null;
 
-  return { hasSkills, hasRules, hasInstructions, skillsCount, rulesCount };
+  let hasWorkflows = false;
+  let workflowsCount = 0;
+  const workflowsDir = path.resolve(".my-ai", "workflows");
+  if (fs.existsSync(workflowsDir)) {
+    try {
+      const workflows = loadCanonicalWorkflows(workflowsDir);
+      hasWorkflows = workflows.length > 0;
+      workflowsCount = workflows.length;
+    } catch {
+      hasWorkflows = false;
+    }
+  }
+
+  return {
+    hasSkills,
+    hasRules,
+    hasInstructions,
+    hasWorkflows,
+    skillsCount,
+    rulesCount,
+    workflowsCount,
+  };
 }
 
 /**
@@ -83,8 +110,8 @@ export function detectAvailableResources(): ResourceDetectionResult {
 export function getAvailableResourceTypes(
   platforms: string[],
   detection: ResourceDetectionResult,
-): Array<{ name: string; value: "skills" | "rules" | "instructions" }> {
-  const types: Array<{ name: string; value: "skills" | "rules" | "instructions" }> = [];
+): Array<{ name: string; value: "skills" | "rules" | "instructions" | "workflows" }> {
+  const types: Array<{ name: string; value: "skills" | "rules" | "instructions" | "workflows" }> = [];
 
   if (detection.hasSkills) {
     types.push({
@@ -109,6 +136,16 @@ export function getAvailableResourceTypes(
       types.push({
         name: "project instructions (1 found)",
         value: "instructions",
+      });
+    }
+  }
+
+  if (detection.hasWorkflows) {
+    const hasWorkflowTarget = platforms.some((p) => WORKFLOW_SYNC_PLATFORMS.has(p));
+    if (hasWorkflowTarget) {
+      types.push({
+        name: `workflows (${detection.workflowsCount} found)`,
+        value: "workflows",
       });
     }
   }
@@ -161,8 +198,10 @@ function previewPlatformSync(
   adapter: PlatformAdapter,
   skills: SkillSpec[],
   rules: RuleSpec[],
+  workflows: WorkflowSpec[],
   syncSkills: boolean,
   syncRules: boolean,
+  syncWorkflows: boolean,
   prune: boolean,
 ): { actions: ResourceSyncAction[]; hasChanges: boolean } {
   const allActions: ResourceSyncAction[] = [];
@@ -192,6 +231,20 @@ function previewPlatformSync(
     }
   } else if (syncRules && !RULE_SYNC_PLATFORMS.has(adapter.name)) {
     console.log(`  (rules not supported for ${adapter.name})`);
+  }
+
+  if (syncWorkflows && WORKFLOW_SYNC_PLATFORMS.has(adapter.name)) {
+    if (workflows.length > 0) {
+      const actions = planWorkflowSync(workflows, adapter, { prune });
+      for (const action of actions) {
+        const label = actionLabel(action.action);
+        console.log(`  ${label} ${action.id} → ${action.targetPath}`);
+        if (action.action !== "skip") hasChanges = true;
+        allActions.push(action);
+      }
+    }
+  } else if (syncWorkflows && !WORKFLOW_SYNC_PLATFORMS.has(adapter.name)) {
+    console.log(`  (workflows not supported for ${adapter.name})`);
   }
 
   return { actions: allActions, hasChanges };
@@ -231,8 +284,10 @@ function executePlatformSync(
   adapter: PlatformAdapter,
   skills: SkillSpec[],
   rules: RuleSpec[],
+  workflows: WorkflowSpec[],
   syncSkills: boolean,
   syncRules: boolean,
+  syncWorkflows: boolean,
   prune: boolean,
 ): void {
   if (syncSkills && skills.length > 0) {
@@ -243,6 +298,11 @@ function executePlatformSync(
   if (syncRules && RULE_SYNC_PLATFORMS.has(adapter.name) && rules.length > 0) {
     const actions = planRuleSync(rules, adapter, { prune });
     executeRuleSync(rules, actions, adapter);
+  }
+
+  if (syncWorkflows && WORKFLOW_SYNC_PLATFORMS.has(adapter.name) && workflows.length > 0) {
+    const actions = planWorkflowSync(workflows, adapter, { prune });
+    executeWorkflowSync(workflows, actions, adapter);
   }
 }
 
@@ -279,8 +339,8 @@ export async function interactiveSyncFlow(): Promise<void> {
 
   // Step 2: Scan available resources
   const detection = detectAvailableResources();
-  if (!detection.hasSkills && !detection.hasRules && !detection.hasInstructions) {
-    console.error("No valid skills, rules, or project instructions found in .my-ai. Run 'aisyncer init' first.");
+  if (!detection.hasSkills && !detection.hasRules && !detection.hasInstructions && !detection.hasWorkflows) {
+    console.error("No valid skills, rules, project instructions, or workflows found in .my-ai. Run 'aisyncer init' first.");
     process.exit(1);
   }
 
@@ -317,6 +377,7 @@ export async function interactiveSyncFlow(): Promise<void> {
   const syncSkills = resourceTypes.includes("skills");
   const syncRules = resourceTypes.includes("rules");
   const syncInstructions = resourceTypes.includes("instructions");
+  const syncWorkflows = resourceTypes.includes("workflows");
 
   const prune = await confirm({
     message: "Prune stale generated resources that no longer exist in .my-ai?",
@@ -367,7 +428,7 @@ export async function interactiveSyncFlow(): Promise<void> {
   }
 
   let cursorDir: string | undefined;
-  if (syncSkills && platforms.includes("cursor")) {
+  if ((syncSkills || syncWorkflows) && platforms.includes("cursor")) {
     const useCustomDir = await confirm({
       message: "Use custom Cursor output directory?",
       default: false,
@@ -394,6 +455,9 @@ export async function interactiveSyncFlow(): Promise<void> {
   const rules = syncRules
     ? loadCanonicalRules(path.resolve(".my-ai", "rules"))
     : [];
+  const workflows = syncWorkflows
+    ? loadCanonicalWorkflows(path.resolve(".my-ai", "workflows"))
+    : [];
   const projectInstructions = syncInstructions
     ? loadProjectInstructions(canonicalProjectInstructionsPath(path.resolve(".my-ai")))
     : null;
@@ -405,9 +469,18 @@ export async function interactiveSyncFlow(): Promise<void> {
   console.log("\n=== Preview Changes ===");
 
   let hasAnyChanges = false;
-  if (syncSkills || syncRules) {
+  if (syncSkills || syncRules || syncWorkflows) {
     for (const adapter of adapters) {
-      const { hasChanges } = previewPlatformSync(adapter, skills, rules, syncSkills, syncRules, prune);
+      const { hasChanges } = previewPlatformSync(
+        adapter,
+        skills,
+        rules,
+        workflows,
+        syncSkills,
+        syncRules,
+        syncWorkflows,
+        prune,
+      );
       if (hasChanges) hasAnyChanges = true;
     }
   }
@@ -435,10 +508,19 @@ export async function interactiveSyncFlow(): Promise<void> {
 
   // Execute sync — reuse same adapters and loaded resources
   console.log("\n=== Applying Changes ===");
-  if (syncSkills || syncRules) {
+  if (syncSkills || syncRules || syncWorkflows) {
     for (const adapter of adapters) {
       console.log(`\nSyncing to ${adapter.name}...`);
-      executePlatformSync(adapter, skills, rules, syncSkills, syncRules, prune);
+      executePlatformSync(
+        adapter,
+        skills,
+        rules,
+        workflows,
+        syncSkills,
+        syncRules,
+        syncWorkflows,
+        prune,
+      );
     }
   }
 

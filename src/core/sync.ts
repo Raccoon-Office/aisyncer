@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import type { SkillSpec, RuleSpec } from "./schema.js";
-import { skillConfig, ruleConfig } from "./schema.js";
+import type { SkillSpec, RuleSpec, WorkflowSpec } from "./schema.js";
+import { skillConfig, ruleConfig, workflowConfig } from "./schema.js";
 import type { PlatformAdapter } from "../adapters/base.js";
 import type { ResourceSyncAction } from "./resource.js";
 import {
@@ -174,6 +174,48 @@ export function executeRuleSync(
     actions,
     (rule) => adapter.writeResource(rule, ruleConfig),
     (id) => adapter.deleteResource(id, ruleConfig),
+  );
+}
+
+// -- Workflows --
+
+export function loadCanonicalWorkflows(workflowsDir: string): WorkflowSpec[] {
+  return loadCanonicalResources(workflowsDir, workflowConfig);
+}
+
+export function planWorkflowSync(
+  workflows: WorkflowSpec[],
+  adapter: PlatformAdapter,
+  options: { prune?: boolean } = {},
+): ResourceSyncAction[] {
+  const actions = planResourceSync(
+    workflows,
+    (id) => adapter.readResource(id, workflowConfig),
+    (id) => adapter.resourcePath(id, workflowConfig),
+    workflowConfig,
+  );
+
+  if (options.prune) {
+    actions.push(...planResourcePrune(
+      workflows.map((workflow) => workflow.id),
+      adapter.listResourceIds(workflowConfig),
+      (id) => adapter.resourcePath(id, workflowConfig),
+    ));
+  }
+
+  return actions;
+}
+
+export function executeWorkflowSync(
+  workflows: WorkflowSpec[],
+  actions: ResourceSyncAction[],
+  adapter: PlatformAdapter,
+): void {
+  executeResourceSync(
+    workflows,
+    actions,
+    (workflow) => adapter.writeResource(workflow, workflowConfig),
+    (id) => adapter.deleteResource(id, workflowConfig),
   );
 }
 
