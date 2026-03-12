@@ -4,13 +4,14 @@ import { Command } from "commander";
 import { initCommand } from "./commands/init.js";
 import { validateCommand } from "./commands/validate.js";
 import { syncCommand } from "./commands/sync.js";
+import { readCliVersion } from "./version.js";
 
 const program = new Command();
 
 program
   .name("aisyncer")
   .description("CLI tool for syncing AI skills, rules, and configs across Claude, Codex, Cursor, and Windsurf")
-  .version("0.3.1");
+  .version(readCliVersion());
 
 program
   .command("init")
